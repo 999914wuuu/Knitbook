@@ -263,15 +263,6 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 .wadd input{flex:1;border:1.5px solid var(--line);background:var(--bg);border-radius:14px;padding:9px 12px;font-size:15px;min-width:0}
 .wadd button{border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;width:44px;font-size:20px}
 .wmore{display:block;width:100%;border:0;background:none;color:var(--mute);font-size:13px;padding:8px 0 2px}
-.ph2 .crp{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;border-radius:999px;padding:2px 8px;pointer-events:none}
-.ph2 img{cursor:pointer}
-.crop{position:fixed;inset:0;z-index:40;background:#1c140e;display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top,0px)) 14px calc(14px + env(safe-area-inset-bottom,0px))}
-.crop .ct{color:#f1e5d6;text-align:center;font-size:14px;margin:4px 0 10px}
-.crop .cw{flex:1;min-height:0;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none}
-.crop .cw img{max-width:100%;max-height:100%;display:block;pointer-events:none;-webkit-touch-callout:none}
-.crop .cr{position:absolute;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.45);border-radius:4px;pointer-events:none}
-.crop .cb{display:flex;gap:10px}
-.crop .cb .btn{margin-top:12px}
 .toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 .toast.on{opacity:1}
 </style>
@@ -680,57 +671,77 @@ function hookText(codes,other){
     s=[lace.length?fmt(lace):'',reg.length?fmt(reg,/mm$/.test(reg[reg.length-1][0])?'':' 號'):''].filter(Boolean).join('、')}
   return [s,other].filter(Boolean).join('、');
 }
-let OCRW=null,OCRL='',OCRLOG=null;
-async function getOCR(langs,logger){
-  OCRLOG=logger;const key=langs.join('+');
-  if(OCRW&&OCRL===key)return OCRW;
-  if(OCRW){try{await OCRW.terminate()}catch(e){}OCRW=null}
-  const T=await loadTesseract();OCRW=await T.createWorker(key,1,{logger:m=>OCRLOG&&OCRLOG(m)});OCRL=key;return OCRW;
+async function grabRaw(u){
+  const r=await api('GET','/grab?url='+encodeURIComponent(u));
+  if(r.status>=400)throw new Error('http '+r.status);
+  const bin=Uint8Array.from(atob(r.b64),c=>c.charCodeAt(0));return {...r,bin};
 }
-function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.crossOrigin='anonymous';im.onload=()=>res(im);im.onerror=rej;im.src=typeof src==='string'?src:URL.createObjectURL(src)})}
-async function prepOCR(src,box){
-  const im=await loadImg(src);const sx=box?box.x:0,sy=box?box.y:0,sw=box?box.w:im.naturalWidth,sh=box?box.h:im.naturalHeight;
-  const sc=Math.max(1,Math.min(4,1600/Math.max(sw,sh)));const c=document.createElement('canvas');c.width=Math.round(sw*sc);c.height=Math.round(sh*sc);
-  const x=c.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(im,sx,sy,sw,sh,0,0,c.width,c.height);
-  const d=x.getImageData(0,0,c.width,c.height),p=d.data;const hist=new Array(256).fill(0);
-  for(let i=0;i<p.length;i+=4){const g=Math.round(.299*p[i]+.587*p[i+1]+.114*p[i+2]);p[i]=g;hist[g]++}
-  const tot=p.length/4;let lo=0,hi=255,acc=0;for(;lo<255;lo++){acc+=hist[lo];if(acc>tot*.02)break}acc=0;for(;hi>0;hi--){acc+=hist[hi];if(acc>tot*.02)break}
-  const r=Math.max(1,hi-lo);for(let i=0;i<p.length;i+=4){const g=Math.max(0,Math.min(255,(p[i]-lo)*255/r));p[i]=p[i+1]=p[i+2]=g}
-  x.putImageData(d,0,0);return new Promise(res=>c.toBlob(res,'image/png'));
+function decodeHtml(bin,type){
+  let cs=(type.match(/charset=([\w-]+)/i)||[])[1];
+  if(!cs){const head=new TextDecoder('latin1').decode(bin.slice(0,4096));cs=(head.match(/<meta[^>]+charset=["']?([\w-]+)/i)||[])[1]}
+  try{return new TextDecoder(cs||'utf-8').decode(bin)}catch(e){return new TextDecoder('utf-8').decode(bin)}
 }
-function cropPick(src){return new Promise(async res=>{
-  const ov=document.createElement('div');ov.className='crop';
-  ov.innerHTML=`<p class="ct">用手指拖出一個框,框住要辨識的文字</p><div class="cw"><img alt=""><div class="cr hide"></div></div><div class="cb"><button class="btn ghost" data-c="0">取消</button><button class="btn" data-c="1" disabled>辨識這塊</button></div>`;
-  document.body.append(ov);const img=ov.querySelector('img'),wrap=ov.querySelector('.cw'),rc=ov.querySelector('.cr'),ok=ov.querySelector('[data-c="1"]');
-  img.src=typeof src==='string'?src:URL.createObjectURL(src);let a=null,b=null;
-  const pt=e=>{const r=img.getBoundingClientRect();return{x:Math.max(0,Math.min(r.width,e.clientX-r.left)),y:Math.max(0,Math.min(r.height,e.clientY-r.top))}};
-  const paint=()=>{if(!a||!b)return;const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.abs(a.x-b.x),h=Math.abs(a.y-b.y);const ir=img.getBoundingClientRect(),wr=wrap.getBoundingClientRect();Object.assign(rc.style,{left:(ir.left-wr.left+x)+'px',top:(ir.top-wr.top+y)+'px',width:w+'px',height:h+'px'});rc.classList.remove('hide');ok.disabled=w<12||h<8};
-  wrap.addEventListener('pointerdown',e=>{e.preventDefault();wrap.setPointerCapture(e.pointerId);a=pt(e);b=a;paint()});
-  wrap.addEventListener('pointermove',e=>{if(!a||!e.buttons&&e.pointerType==='mouse')return;if(e.pointerType!=='mouse'||e.buttons){b=pt(e);paint()}});
-  wrap.addEventListener('pointerup',e=>{if(a){b=pt(e);paint()}});
-  const done=async v=>{let out=null;if(v&&a&&b){const r=img.getBoundingClientRect(),k=img.naturalWidth/r.width;out=await prepOCR(img.src,{x:Math.min(a.x,b.x)*k,y:Math.min(a.y,b.y)*k,w:Math.abs(a.x-b.x)*k,h:Math.abs(a.y-b.y)*k})}ov.remove();res(out)};
-  ov.querySelector('[data-c="0"]').onclick=()=>done(false);ok.onclick=()=>done(true);
-})}
-function ocrLangs(){try{return (localStorage.getItem('kb-ocr')||'jpn+eng').split('+')}catch(e){return['jpn','eng']}}
-function loadTesseract(){return new Promise((res,rej)=>{if(window.Tesseract)return res(window.Tesseract);const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';s.onload=()=>res(window.Tesseract);s.onerror=rej;document.head.append(s)})}
+const FIBER=/綿|コットン|ウール|毛|アクリル|ナイロン|ポリエステル|レーヨン|麻|リネン|シルク|モヘア|アルパカ|カシミヤ|棉|羊毛|蠶絲|cotton|wool|acrylic|nylon|polyester|linen|silk|mohair|alpaca|cashmere|면|울|아크릴|나일론|폴리에스터|린넨/i;
+async function grabYarn(u){
+  const r=await grabRaw(u);const html=decodeHtml(r.bin,r.type||'');
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const meta=k=>doc.querySelector(`meta[property="${k}"],meta[name="${k}"]`)?.getAttribute('content')?.trim()||'';
+  let prod=null;
+  doc.querySelectorAll('script[type="application/ld+json"]').forEach(s=>{try{const j=JSON.parse(s.textContent);const arr=[].concat(j['@graph']||j);arr.forEach(o=>{if(!prod&&o&&[].concat(o['@type']).includes('Product'))prod=o})}catch(e){}});
+  const abs=x=>{try{return new URL(x,r.url||u).href}catch(e){return''}};
+  const img=prod?.image?(typeof [].concat(prod.image)[0]==='string'?[].concat(prod.image)[0]:[].concat(prod.image)[0]?.url):meta('og:image');
+  const h1=[...doc.querySelectorAll('h1')].map(h=>h.textContent.trim()).find(s=>s&&s.length<80&&s!==meta('og:site_name'));
+  let name=(prod?.name||h1||meta('og:title').replace(/\s*[|｜]\s*[^|｜]{1,30}$/,'')||doc.title||'').replace(/^\s*[［\[【〔(（][^］\]】〕)）]{1,10}[］\]】〕)）]\s*/,'').trim();
+  let brand=typeof prod?.brand==='string'?prod.brand:(prod?.brand?.name||'');
+  const sp=name.match(/^([^|｜]{1,24})\s*[|｜]\s*(.+)$/);
+  if(sp){if(!brand)brand=sp[1].trim();if(brand.toLowerCase()===sp[1].trim().toLowerCase())name=sp[2].trim()}
+  doc.querySelectorAll('script,style,noscript,nav,header,footer,svg,iframe').forEach(e=>e.remove());
+  const body=(doc.body?.innerHTML||'').replace(/<(br|\/p|\/div|\/li|\/tr|\/td|\/th|\/dd|\/dt|\/h\d)[^>]*>/gi,'$&\n');
+  const tmp=new DOMParser().parseFromString(body,'text/html');
+  const text=[prod?.description||'',meta('og:description'),tmp.body?.textContent||''].join('\n').normalize('NFKC');
+  const all=[...new Set(text.split('\n').map(s=>s.replace(/\s+/g,' ').trim()).filter(s=>s.length>=2&&s.length<=80))];
+  const isSpec=s=>/\d\s*(g|m|mm|yds?|号|號|%)(?![a-z])|\d\s*\/\s*0|かぎ針|棒針|鉤針|適合針|使用針|針號|素材|材質|混率|組成|重さ|長さ|色番|太さ|極細|合細|中細|合太|並太|極太|가닥|바늘/i.test(s)||FIBER.test(s)&&/%/.test(s);
+  const lines=all.filter(s=>isSpec(s)&&(/\d/.test(s)||s.length>6)).slice(0,30);
+  const color=prod?.color||'';
+  const colors=[...new Set([...doc.querySelectorAll('select option,[class*=option] label,[class*=option] li,[class*=variant] label')].map(e=>e.textContent.replace(/\s+/g,' ').trim()).filter(s=>s&&s.length<=24&&!/^\d+$/.test(s)&&!/選擇|請選|select|choose|---|数量|數量/i.test(s)))].slice(0,60);
+  const colors2=colors.length?colors:all.filter(s=>/^\d{1,3}\s*[.．、]\s*\S/.test(s)&&s.length<=24).slice(0,60);
+  return {name,brand,colors:colors2,color:String(color||''),shop:meta('og:site_name')||new URL(r.url||u).hostname.replace(/^www\./,''),image:img?abs(img):'',spec:[name,...lines].join('\n'),lines};
+}
+async function grabImage(src){
+  const r=await grabRaw(src);if(!/^image\//.test(r.type||''))throw new Error('not image');
+  const b=await imgToJpeg(new Blob([r.bin],{type:r.type}));return {blob:b,url:URL.createObjectURL(b)};
+}
 const MM2HOOK={'2':'2/0','2.0':'2/0','2.3':'3/0','2.5':'4/0','3':'5/0','3.0':'5/0','3.5':'6/0','4':'7/0','4.0':'7/0','4.5':'7.5/0','5':'8/0','5.0':'8/0','5.5':'9/0','6':'10/0','6.0':'10/0','7':'7mm','8':'8mm','10':'10mm','12':'12mm','15':'15mm'};
-function ocrFill(raw,{v,hooks,setW,drawH,getW}){
+const KNIT_RE=/棒針|knitting|대바늘|輪針/i,CRO_RE=/かぎ針|鉤針|钩针|crochet|코바늘/i;
+const stripLab=s=>s.replace(/^[^|:：]{1,8}[|:：]\s*/,'').trim();
+function specFill(raw,{v,hooks,setW,drawH,getW}){
   const t=raw.normalize('NFKC');let n=0;const put=(k,val)=>{if(val&&!v(k).value){v(k).value=val;n++}};
-  const g=t.match(/(\d+(?:\.\d+)?)\s*(?:g|グラム|克|그램)(?![a-z])/i);if(g)put('gPer',g[1]);
-  const ms=[...t.matchAll(/(\d+(?:\.\d+)?)\s*(?:m|メートル|米|미터)(?![a-z])/gi)].map(x=>+x[1]).filter(x=>x>=10);
-  if(ms.length)put('mPer',String(Math.max(...ms)));
+  const L=t.split('\n').map(s=>s.replace(/\s+/g,' ').trim()).filter(Boolean);
+  const pair=t.match(/(\d+(?:\.\d+)?)\s*(?:g|グラム|克|그램)\s*[^\d\n]{0,8}?(\d+(?:\.\d+)?)\s*(?:m|メートル|米|미터)(?![a-z])/i);
+  if(pair){put('gPer',pair[1]);put('mPer',pair[2])}
+  const gl=L.find(s=>/^(重量|重さ|規格|仕立て|1玉|무게|weight)/i.test(s)&&/\dg/i.test(s))||t;
+  const g=gl.match(/(\d+(?:\.\d+)?)\s*(?:g|グラム|克|그램)(?![a-z])/i);if(g)put('gPer',g[1]);
+  const ml=L.find(s=>/^(長度|長さ|길이|length)/i.test(s));
+  const ms=[...(ml||t).matchAll(/(\d+(?:\.\d+)?)\s*(?:m|メートル|米|미터)(?![a-z])/gi)].map(x=>+x[1]).filter(x=>x>=10);
+  if(ms.length)put('mPer',String(ml?ms[0]:Math.max(...ms)));
   else{const y=t.match(/(\d+(?:\.\d+)?)\s*(?:yds?|yards?)/i);if(y)put('mPer',String(Math.round(+y[1]*0.9144)))}
   if(!hooks.size){
     const codes=new Set();
     for(const x of t.matchAll(/(\d+(?:\.5)?)\s*\/\s*0/g)){const c=x[1]+'/0';if(HOOKS.some(h=>h[0]===c))codes.add(c)}
     for(const x of t.matchAll(/レース(?:針)?\s*(\d+)\s*号/g)){const c='レース'+x[1];if(HOOKS.some(h=>h[0]===c))codes.add(c)}
-    if(!codes.size&&/かぎ|crochet|코바늘|鉤針/i.test(t)){for(const x of t.matchAll(/(\d+(?:\.\d)?)\s*mm/gi)){const c=MM2HOOK[x[1]];if(c)codes.add(c)}}
+    if(!codes.size)L.filter(s=>CRO_RE.test(s)&&!KNIT_RE.test(s)&&!/レース/.test(s)).forEach(s=>{for(const x of s.matchAll(/(\d+(?:\.5)?)\s*(?:[~〜\-–]\s*(\d+(?:\.5)?))?\s*[号號호]/g)){[x[1],x[2]].filter(Boolean).forEach(m=>{const c=m+'/0';if(HOOKS.some(h=>h[0]===c))codes.add(c)})}});
+    if(!codes.size)L.filter(s=>CRO_RE.test(s)&&!KNIT_RE.test(s)).forEach(s=>{for(const x of s.matchAll(/(\d+(?:\.\d+)?)\s*(?:[~〜\-–]\s*(\d+(?:\.\d+)?))?\s*mm/gi)){[x[1],x[2]].filter(Boolean).forEach(m=>{const c=MM2HOOK[String(+m)]||MM2HOOK[m];if(c)codes.add(c)})}});
     if(codes.size){codes.forEach(c=>hooks.add(c));drawH();n++}
   }
+  const kn=L.find(s=>KNIT_RE.test(s)&&/\d/.test(s)&&s.length<50);
+  if(kn)put('hookOther',/^棒針/.test(stripLab(kn))?stripLab(kn):'棒針 '+stripLab(kn));
   if(!getW()){const w=['超極太','極太','並太','合太','中細','合細','極細'].find(w=>t.includes(w));if(w){setW(w);n++}}
-  const mat=t.split('\n').map(s=>s.trim()).find(s=>/%/.test(s)&&/[^\d\s%]/.test(s));if(mat)put('material',mat);
+  const mats=L.filter(s=>/%/.test(s)&&FIBER.test(s)&&s.length<70);const mat=mats.find(s=>/^(素材|材質|混率|組成|成分|소재|혼용률)/.test(s))||mats[0];if(mat)put('material',/^(素材|材質|混率|組成|成分|소재|혼용률)/.test(mat)?stripLab(mat):mat);
+  const extra=L.filter(s=>/^(粗細|太さ|密度|ゲージ|産地|產地|굵기)/.test(s)&&s.length<80);
+  if(extra.length)put('note',extra.join('\n'));
   return n;
 }
+
 function yTotal(y){const q=parseFloat(y.qty);if(!q||(y.unit&&y.unit!=='球'))return'';const g=parseFloat(y.gPer),m=parseFloat(y.mPer);return [g?'共 '+Math.round(q*g)+'g':'',m?'約 '+Math.round(q*m)+'m':''].filter(Boolean).join('・')}
 const yPhotos=y=>y.photos||(y.photo?[y.photo]:[]);
 function openYarn(y){
@@ -740,10 +751,11 @@ function openYarn(y){
   const F=(k,l,ph='',ty='text')=>`<div><label>${l}</label><input data-f="${k}" type="${ty}" ${ty==='number'?'inputmode="decimal"':''} value="${esc(y[k]??'')}" placeholder="${ph}"></div>`;
   const html=`<div class="fm">
   <div class="gal" id="ygal"></div>
-  <div style="display:flex;gap:8px;margin-top:8px"><label class="ybtn">📷 加照片<input type="file" id="yfile" accept="image/*" multiple hidden></label><button class="ybtn" id="yread" type="button" style="border-style:solid">讀取標籤</button></div>
-  <label>標籤語言</label><div class="chips2" id="ylang" style="flex-wrap:wrap;margin-bottom:0">${[['jpn','日文'],['chi_tra','繁中'],['kor','韓文'],['eng','英文']].map(([k,l])=>`<button type="button" data-lang="${k}" class="${ocrLangs().includes(k)?'on':''}">${l}</button>`).join('')}</div>
-  <p class="hint" id="ystat">點照片可以只框選要辨識的部分,準確度會高很多;按「讀取標籤」則是整張一起讀。克數、長度、針號、粗細會自動填,其他文字點一下就能放進目前選取的欄位。</p>
-  <div class="note hide" id="yhint" style="margin:0 0 10px"></div>
+  <label class="ybtn" style="margin-top:8px">📷 加照片<input type="file" id="yfile" accept="image/*" multiple hidden></label>
+  <label>購買網址</label><div class="wadd" style="margin-top:0"><input id="yurl" data-f="url" type="url" inputmode="url" value="${esc(y.url||'')}" placeholder="貼上商品頁面網址" autocapitalize="off" autocorrect="off"><button type="button" id="ygrab" style="width:auto;padding:0 14px;font-size:15px">讀取</button></div>
+  ${y.url?`<p class="hint" style="margin:6px 2px 0"><a href="${esc(y.url)}" target="_blank" rel="noopener" style="color:var(--accent)">打開購買頁面</a></p>`:''}
+  <p class="hint" id="ystat">貼上購買頁面的網址按「讀取」,會自動填入品名、規格和商品照片;沒抓到的資訊,點下方的文字就能放進目前選取的欄位。</p>
+  <div class="hide" id="ycolwrap"><label>選色號</label><div class="chips2" id="ycol" style="flex-wrap:wrap"></div></div>
   <div class="chips2 hide" id="yocr" style="flex-wrap:wrap"></div>
   <div class="two">${F('brand','品牌')}${F('name','品名')}</div>
   <div class="two">${F('color','色名/色號')}${F('material','材質')}</div>
@@ -762,9 +774,8 @@ function openYarn(y){
     const v=k=>sh.querySelector(`[data-f="${k}"]`);const gal=sh.querySelector('#ygal'),st=sh.querySelector('#ystat');
     const tot=()=>{sh.querySelector('#ytot').textContent=yTotal({qty:v('qty').value,unit:v('unit').value,gPer:v('gPer').value,mPer:v('mPer').value})};
     ['qty','unit','gPer','mPer'].forEach(k=>v(k).addEventListener('input',tot));tot();
-    const draw=()=>{gal.innerHTML=keep.map((id,i)=>`<div class="ph2"><img src="${blobUrl(id)}" alt="" data-ck="${i}"><button data-k="${i}">✕</button><span class="crp">框選</span></div>`).join('')+add.map((a,i)=>`<div class="ph2"><img src="${a.url}" alt="" data-ca="${i}"><button data-a="${i}">✕</button><span class="crp">框選</span></div>`).join('');
+    const draw=()=>{gal.innerHTML=keep.map((id,i)=>`<div class="ph2"><img src="${blobUrl(id)}" alt=""><button data-k="${i}">✕</button></div>`).join('')+add.map((a,i)=>`<div class="ph2"><img src="${a.url}" alt=""><button data-a="${i}">✕</button></div>`).join('');
       gal.style.marginTop=(keep.length+add.length)?'':'0';
-      gal.querySelectorAll('[data-ck]').forEach(im=>im.onclick=()=>cropAndRead(blobUrl(keep[+im.dataset.ck])));gal.querySelectorAll('[data-ca]').forEach(im=>im.onclick=()=>cropAndRead(add[+im.dataset.ca].url));
       gal.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{keep.splice(+b.dataset.k,1);draw()});gal.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{URL.revokeObjectURL(add[+b.dataset.a].url);add.splice(+b.dataset.a,1);draw()})};
     draw();
     sh.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{closeSheet();location.hash='#/p/'+b.dataset.go});
@@ -774,51 +785,32 @@ function openYarn(y){
     sh.querySelectorAll('[data-h]').forEach(b=>b.onclick=()=>{const h=b.dataset.h;hooks.has(h)?hooks.delete(h):hooks.add(h);drawH()});
     sh.querySelector('#yfile').onchange=async e=>{for(const f of e.target.files){if(keep.length+add.length>=4){toast('最多 4 張');break}try{const b=await imgToJpeg(f);add.push({blob:b,url:URL.createObjectURL(b)})}catch(_){toast('有照片讀不了')}}e.target.value='';draw()};
     let target=v('brand');
-    sh.querySelectorAll('.fm input[data-f]:not([type=number]):not([type=date]),.fm textarea[data-f]').forEach(el=>el.addEventListener('focus',()=>{target=el}));
-    sh.querySelectorAll('[data-lang]').forEach(b=>b.onclick=()=>{b.classList.toggle('on');const l=[...sh.querySelectorAll('[data-lang].on')].map(x=>x.dataset.lang);try{localStorage.setItem('kb-ocr',l.join('+'))}catch(e){}});
-    const LN={jpn:'日文',chi_tra:'繁中',kor:'韓文',eng:'英文'};
-    const setLangs=l=>{sh.querySelectorAll('[data-lang]').forEach(b=>b.classList.toggle('on',l.includes(b.dataset.lang)));try{localStorage.setItem('kb-ocr',l.join('+'))}catch(e){}};
-    const rbtn=sh.querySelector('#yread');const tried=new Set();
-    let allLines=[];
-    const drawLines=()=>{const box=sh.querySelector('#yocr');box.classList.toggle('hide',!allLines.length);
-      box.innerHTML=allLines.map((l,i)=>`<button type="button" data-l="${i}">${esc(l)}</button>`).join('');
-      box.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{const s=allLines[+b.dataset.l];target.value=target.value?target.value+' '+s:s;target.focus();b.classList.add('on')})};
-    async function runOCR(langs,opts={}){
-      if(!opts.blobs&&!keep.length&&!add.length){st.textContent='先加一張標籤照片。';return}
-      if(!langs.length){st.textContent='至少選一種標籤語言。';return}
-      const hint=sh.querySelector('#yhint');hint.classList.add('hide');
-      langs.forEach(l=>tried.add(l));rbtn.disabled=true;st.textContent='載入文字辨識…第一次使用要下載語言資料,會比較久。';
+    sh.querySelectorAll('.fm input[data-f]:not([type=number]):not([type=date]):not([type=url]),.fm textarea[data-f]').forEach(el=>el.addEventListener('focus',()=>{target=el}));
+    const gbtn=sh.querySelector('#ygrab');
+    gbtn.onclick=async()=>{
+      const u=v('url').value.trim();
+      if(!/^https?:\/\//i.test(u)){st.textContent='請貼上以 http 開頭的完整網址。';return}
+      gbtn.disabled=true;st.textContent='讀取頁面中…';
       try{
-        const worker=await getOCR(langs,m=>{if(m.status==='recognizing text')st.textContent=`辨識中 ${Math.round(m.progress*100)}%`});
-        await worker.setParameters({tessedit_pageseg_mode:opts.blobs?'6':'3'});
-        let blobs=opts.blobs;
-        if(!blobs){const raw=[...await Promise.all(keep.map(id=>fetch(blobUrl(id)).then(r=>r.blob()))),...add.map(a=>a.blob)];blobs=[];for(const b of raw)blobs.push(await prepOCR(b))}
-        let text='',confs=[];for(const b of blobs){const {data}=await worker.recognize(b);text+=data.text+'\n';if(data.text.trim())confs.push(data.confidence)}
-        const conf=confs.length?Math.round(confs.reduce((a,b)=>a+b,0)/confs.length):0;
-        const low=conf<60;const n=low?0:ocrFill(text,{v,hooks,setW,drawH,getW:()=>weight});tot();
-        const lines=[...new Set(text.split('\n').map(s=>s.replace(/\s{2,}/g,' ').trim()).filter(s=>s.length>=2))];
-        allLines=opts.blobs?[...new Set([...lines,...allLines])]:lines;drawLines();
-        st.textContent=(n?`自動填了 ${n} 項。`:'')+(lines.length?'先點要填的欄位,再點下面的文字放進去。':'沒辨識到文字,可以點照片框選文字的部分再試。');
-        if(low){
-          const alts=['jpn','chi_tra','kor'].filter(l=>!tried.has(l));
-          const msg=alts.length?'可能是語言選錯了,要換一種語言再讀一次嗎?':'幾種語言都試過了,問題比較可能出在照片:點照片只框選有字的部分,或拍近一點、讓標籤平整、光線亮一點再試。';
-          hint.innerHTML=`<p style="margin:0 0 8px">辨識結果不太可靠${lines.length?`(信心 ${conf} 分)`:''},所以先不自動填寫。${msg}</p><div class="chips2" style="flex-wrap:wrap;margin:0">${alts.map(l=>`<button type="button" data-re="${l}">改用${LN[l]}重讀</button>`).join('')}${lines.length?'<button type="button" data-force="1">照樣自動填寫</button>':''}</div>`;
-          hint.classList.remove('hide');
-          hint.querySelectorAll('[data-re]').forEach(b=>b.onclick=()=>{const l=[b.dataset.re,'eng'];setLangs(l);runOCR(l,opts)});
-          const fb=hint.querySelector('[data-force]');if(fb)fb.onclick=()=>{const k=ocrFill(text,{v,hooks,setW,drawH,getW:()=>weight});tot();hint.classList.add('hide');st.textContent=k?`自動填了 ${k} 項,請檢查一下有沒有讀錯。`:'沒有可以自動填的項目。'};
-        }
-      }catch(err){st.textContent='文字辨識載入失敗,請檢查網路後再試。'}
-      rbtn.disabled=false;
-    }
-    async function cropAndRead(src){
-      const blob=await cropPick(src);if(!blob)return;
-      runOCR([...sh.querySelectorAll('[data-lang].on')].map(b=>b.dataset.lang),{blobs:[blob]});
-    }
-    rbtn.onclick=()=>runOCR([...sh.querySelectorAll('[data-lang].on')].map(b=>b.dataset.lang));
+        const info=await grabYarn(u);
+        let n=0;const put=(k,val)=>{if(val&&!v(k).value){v(k).value=val;n++}};
+        put('name',info.name);put('brand',info.brand);put('color',info.color);put('shop',info.shop);
+        n+=specFill(info.spec,{v,hooks,setW,drawH,getW:()=>weight});tot();
+        if(info.image&&keep.length+add.length<4){try{add.push(await grabImage(info.image));draw();n++}catch(_){}}
+        const cw=sh.querySelector('#ycolwrap'),cb=sh.querySelector('#ycol');cw.classList.toggle('hide',!info.colors.length);
+        cb.innerHTML=info.colors.map((c,i)=>`<button type="button" data-c="${i}">${esc(c)}</button>`).join('');
+        cb.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{v('color').value=info.colors[+b.dataset.c];cb.querySelectorAll('[data-c]').forEach(x=>x.classList.toggle('on',x===b))});
+        const box=sh.querySelector('#yocr');box.classList.toggle('hide',!info.lines.length);
+        box.innerHTML=info.lines.map((l,i)=>`<button type="button" data-l="${i}">${esc(l)}</button>`).join('');
+        box.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{const s=info.lines[+b.dataset.l];target.value=target.value?target.value+' '+s:s;target.focus();b.classList.add('on')});
+        st.textContent=n?`填入了 ${n} 項,檢查一下有沒有錯。`+(info.lines.length?'沒抓到的資訊,可以先點欄位再點下方文字。':''):(info.lines.length?'沒能自動判斷,先點要填的欄位,再點下方的文字放進去。':'這個頁面讀不到商品資訊。有些網站(例如蝦皮、Amazon)不讓外部程式讀取,只能手動填。');
+      }catch(e){st.textContent=e.status===401?'通行碼不對,請到設定重新連線。':'讀不到這個頁面。有些網站會擋外部讀取,只能手動填。'}
+      gbtn.disabled=false;
+    };
     sh.querySelector('#ysave').onclick=async function(){
       if(add.length&&!S.assets){toast('這裡沒辦法上傳照片');return}
       this.disabled=true;
-      const d={};['brand','name','color','material','hookOther','gPer','mPer','qty','unit','status','bought','shop','note'].forEach(k=>d[k]=v(k).value.trim());
+      const d={};['brand','name','color','material','hookOther','gPer','mPer','qty','unit','status','bought','shop','note','url'].forEach(k=>d[k]=v(k).value.trim());
       d.weight=weight;d.hooks=HOOKS.map(h=>h[0]).filter(h=>hooks.has(h));d.hook=hookText(d.hooks,d.hookOther);
       try{
         const ids=[];for(const a of add){const r=await S.assets.upload(a.blob,{type:'image/jpeg'});ids.push(r.id)}
