@@ -244,6 +244,25 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 .snack{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:8px 8px 8px 16px;border-radius:999px;font-size:14px;z-index:20;opacity:0;transition:.25s;pointer-events:none;display:flex;align-items:center;gap:10px;white-space:nowrap}
 .snack.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
 .snack button{border:0;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:7px 14px;font-size:14px}
+.wip{padding:14px 16px 10px}
+.wip .wh{display:flex;align-items:center;justify-content:space-between}
+.wip .wh h2{margin:0}
+.wip .wh button{border:0;background:none;color:var(--mute);font-size:13px;padding:6px 2px}
+.wip .chips2{margin:10px 0 6px}
+.wr{display:flex;align-items:center;gap:10px;padding:10px 2px;border-top:1.5px dashed var(--line);cursor:pointer}
+.wr:first-child{border-top:0}
+.wr .wn{flex:1;min-width:0;line-height:1.35}
+.wr .wn b{font-weight:400;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wr .wn small{color:var(--mute);font-size:12.5px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wr .go{font-size:12.5px;color:var(--mute)}
+.pill.knit{background:color-mix(in srgb,var(--accent) 25%,var(--card))}
+.pill.ends{background:color-mix(in srgb,#8fae8b 28%,var(--card))}
+.pill.done{background:var(--line);color:var(--mute)}
+.wr.isdone .wn b{color:var(--mute);text-decoration:line-through}
+.wadd{display:flex;gap:8px;margin-top:8px}
+.wadd input{flex:1;border:1.5px solid var(--line);background:var(--bg);border-radius:14px;padding:9px 12px;font-size:15px;min-width:0}
+.wadd button{border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;width:44px;font-size:20px}
+.wmore{display:block;width:100%;border:0;background:none;color:var(--mute);font-size:13px;padding:8px 0 2px}
 .toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 .toast.on{opacity:1}
 </style>
@@ -260,7 +279,7 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 const SHEEP=`<svg viewBox="0 0 64 56" aria-hidden="true"><g fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.4"><circle cx="18" cy="26" r="10"/><circle cx="30" cy="18" r="11"/><circle cx="44" cy="20" r="10"/><circle cx="50" cy="31" r="9"/><circle cx="24" cy="36" r="11"/><circle cx="40" cy="38" r="11"/></g><rect x="22" y="44" width="4" height="9" rx="2" fill="var(--face)"/><rect x="38" y="45" width="4" height="8" rx="2" fill="var(--face)"/><ellipse cx="14" cy="29" rx="4.5" ry="2.6" fill="var(--face)" transform="rotate(-30 14 29)"/><ellipse cx="34" cy="29" rx="4.5" ry="2.6" fill="var(--face)" transform="rotate(30 34 29)"/><ellipse cx="24" cy="31" rx="8" ry="9" fill="var(--face)"/><circle cx="21" cy="29.5" r="1.3" fill="#fff"/><circle cx="27" cy="29.5" r="1.3" fill="#fff"/><circle cx="19" cy="34" r="1.8" fill="var(--pad)"/><circle cx="29" cy="34" r="1.8" fill="var(--pad)"/><circle cx="20" cy="22" r="4" fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.2"/><circle cx="27" cy="21" r="4" fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.2"/></svg>`;
 const PAW=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><ellipse cx="12" cy="16" rx="5.2" ry="4.4"/><circle cx="5.6" cy="10.5" r="2.3"/><circle cx="9.4" cy="6.3" r="2.3"/><circle cx="14.6" cy="6.3" r="2.3"/><circle cx="18.4" cy="10.5" r="2.3"/></svg>`;
 
-const S={yarns:[],journal:[],ytab:'all',yq:'',ready:false,err:null,db:null,user:null,assets:null,sample:null,uid:null,patterns:[],prog:{},dirty:{},tab:'rows',draft:null,open:new Set(),sig:''};
+const S={projects:[],wf:'all',showDone:false,yarns:[],journal:[],ytab:'all',yq:'',ready:false,err:null,db:null,user:null,assets:null,sample:null,uid:null,patterns:[],prog:{},dirty:{},tab:'rows',draft:null,open:new Set(),sig:''};
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const fmt=s=>esc(s).replace(/\(([^)]*)\)/g,'<em>($1)</em>');
@@ -314,8 +333,8 @@ async function api(method,path,body,type){
   if(!r.ok){const e=new Error('http '+r.status);e.status=r.status;throw e}
   return (r.headers.get('content-type')||'').includes('json')?r.json():r.text();
 }
-const LISTS={patterns:'patterns',yarns:'yarns',journal:'journal'};
-const SORT={patterns:(x,y)=>(y.createdAt||0)-(x.createdAt||0),yarns:(x,y)=>(y.createdAt||0)-(x.createdAt||0),journal:(x,y)=>(x.at||0)-(y.at||0)};
+const LISTS={patterns:'patterns',yarns:'yarns',journal:'journal',projects:'projects'};
+const SORT={patterns:(x,y)=>(y.createdAt||0)-(x.createdAt||0),yarns:(x,y)=>(y.createdAt||0)-(x.createdAt||0),journal:(x,y)=>(x.at||0)-(y.at||0),projects:(x,y)=>(y.updatedAt||0)-(x.updatedAt||0)};
 function localGet(name,id){return name==='progress'?S.prog[id]:S[LISTS[name]].find(x=>x.id===id)}
 function localSet(name,id,doc){
   if(name==='progress'){saveCache();return}
@@ -327,10 +346,10 @@ function coll(name){return{doc:id=>({
   async update(o){const cur=clone(localGet(name,id)||{});const doc={...cur,...clone(o)};delete doc.id;await api('PUT',`/doc/${name}/${id}`,JSON.stringify(doc),'application/json');localSet(name,id,doc)},
   async delete(){await api('DELETE',`/doc/${name}/${id}`);if(name==='progress')delete S.prog[id];localSet(name,id,null)}
 })}}
-function saveCache(){try{localStorage.setItem('kb-cache',JSON.stringify({patterns:S.patterns,yarns:S.yarns,journal:S.journal,prog:S.prog}))}catch(e){}}
+function saveCache(){try{localStorage.setItem('kb-cache',JSON.stringify({patterns:S.patterns,yarns:S.yarns,journal:S.journal,projects:S.projects,prog:S.prog}))}catch(e){}}
 function applyAll(d){
   const toArr=(o,name)=>Object.entries(o||{}).map(([id,v])=>({id,...v})).sort(SORT[name]);
-  S.patterns=toArr(d.patterns,'patterns');S.yarns=toArr(d.yarns,'yarns');S.journal=toArr(d.journal,'journal');
+  S.patterns=toArr(d.patterns,'patterns');S.yarns=toArr(d.yarns,'yarns');S.journal=toArr(d.journal,'journal');S.projects=toArr(d.projects,'projects');
   Object.entries(d.progress||{}).forEach(([id,v])=>{if(S.dirty[id])return;const cur=S.prog[id];if(!cur||(v.rev||0)>(cur.rev||0))S.prog[id]=v});
   saveCache();
 }
@@ -340,10 +359,10 @@ async function load(quiet){
   if(route().name!=='new')render();
 }
 async function init(){
-  S.pcol=coll('patterns');S.gcol=coll('progress');S.ycol=coll('yarns');S.jcol=coll('journal');
+  S.wcol=coll('projects');S.pcol=coll('patterns');S.gcol=coll('progress');S.ycol=coll('yarns');S.jcol=coll('journal');
   S.assets={async upload(blob){const id=rid32();await api('PUT','/img/'+id,blob,blob.type||'image/jpeg');return{id}},async delete(id){await api('DELETE','/img/'+id)}};
   if(!CFG.url||!CFG.pass){S.err='setup';render();return}
-  try{const c=JSON.parse(localStorage.getItem('kb-cache')||'null');if(c){S.patterns=c.patterns||[];S.yarns=c.yarns||[];S.journal=c.journal||[];S.prog=c.prog||{};S.ready=true}}catch(e){}
+  try{const c=JSON.parse(localStorage.getItem('kb-cache')||'null');if(c){S.patterns=c.patterns||[];S.yarns=c.yarns||[];S.journal=c.journal||[];S.projects=c.projects||[];S.prog=c.prog||{};S.ready=true}}catch(e){}
   render();await load();
 }
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&S.ready&&!Object.keys(S.dirty).length&&route().name!=='new')load(true)});
@@ -384,7 +403,7 @@ async function doImport(file){
     const d=JSON.parse(await file.text());const docs=d.docs||d;const imgs=d.images||{};
     const ids=Object.keys(imgs);let n=0;
     for(const id of ids){st.textContent=`上傳照片 ${++n} / ${ids.length}…`;const im=imgs[id];const bin=Uint8Array.from(atob(im.b64),c=>c.charCodeAt(0));await api('PUT','/img/'+id,new Blob([bin],{type:im.type||'image/jpeg'}),im.type||'image/jpeg')}
-    for(const c of ['patterns','progress','yarns','journal']){for(const [id,v] of Object.entries(docs[c]||{})){st.textContent=`寫入資料 ${c}/${id}…`;await api('PUT',`/doc/${c}/${id}`,JSON.stringify(v),'application/json')}}
+    for(const c of ['patterns','progress','yarns','journal','projects']){for(const [id,v] of Object.entries(docs[c]||{})){st.textContent=`寫入資料 ${c}/${id}…`;await api('PUT',`/doc/${c}/${id}`,JSON.stringify(v),'application/json')}}
     st.textContent='匯入完成!';await load();
   }catch(e){st.textContent='匯入失敗:'+(e.status===401?'通行碼不對':'檔案格式不對或連線中斷')}
 }
@@ -627,7 +646,7 @@ const BALL=`<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" 
 const YST={new:'未使用',using:'使用中',left:'剩餘'};
 const yName=y=>[y.brand,y.name,y.color].filter(Boolean).join(' ')||'未命名毛線';
 function ago(d){if(!d)return'';const t=new Date(d);if(isNaN(t))return'';const m=Math.floor((Date.now()-t)/2629800000);return m<1?'這個月買的':m<12?`${m} 個月前買的`:`${Math.floor(m/12)} 年${m%12?' '+(m%12)+' 個月':''}前買的`}
-function homeHead(k){return `<div class="hero">${SHEEP}<div style="flex:1"><h1>織圖本</h1><p>${S.patterns.length} 份織圖・${S.yarns.length} 款毛線${S.offline?'・離線中':''}</p></div><a class="back" href="#/settings" aria-label="設定" style="font-size:17px">⚙︎</a></div><div class="seg"><button class="${k==='p'?'on':''}" data-act="yseg" data-v="p">織圖</button><button class="${k==='y'?'on':''}" data-act="yseg" data-v="y">毛線</button></div>`}
+function homeHead(k){return `<div class="hero">${SHEEP}<div style="flex:1"><h1>織圖本</h1><p>${S.patterns.length} 份織圖・${S.yarns.length} 款毛線${S.offline?'・離線中':''}</p></div><a class="back" href="#/settings" aria-label="設定" style="font-size:17px">⚙︎</a></div>${vWip()}<div class="seg"><button class="${k==='p'?'on':''}" data-act="yseg" data-v="p">織圖</button><button class="${k==='y'?'on':''}" data-act="yseg" data-v="y">毛線</button></div>`}
 function vYarnHome(){
   const c=s=>S.yarns.filter(y=>s==='all'||y.status===s).length;
   return `<div class="wrap">${homeHead('y')}<button class="add" data-act="yadd">＋ 新增毛線</button>
@@ -781,6 +800,53 @@ function openYarnPick(pat){
   });
 }
 
+/* ---------- WIP projects ---------- */
+const WST={knit:'編織中',ends:'剩收線',done:'完成'};
+const wst=w=>WST[w.status]?w.status:'knit';
+function vWip(){
+  const col=localStorage.getItem('kb-wipcol')==='1';
+  const act=S.projects.filter(w=>w.status!=='done'),done=S.projects.filter(w=>w.status==='done');
+  if(!['all','go','ends'].includes(S.wf))S.wf='all';
+  const F={all:w=>true,go:w=>w.portable,ends:w=>wst(w)==='ends'};
+  const order={knit:0,ends:1};
+  const list=act.filter(F[S.wf]||F.all).sort((a,b)=>order[wst(a)]-order[wst(b)]||(b.updatedAt||0)-(a.updatedAt||0));
+  const row=w=>`<div class="wr${w.status==='done'?' isdone':''}" data-act="wipopen" data-id="${w.id}"><span class="pill ${wst(w)}">${WST[wst(w)]}</span><span class="wn"><b>${esc(w.name)}</b>${w.note?`<small>${esc(w.note)}</small>`:''}</span>${w.portable?'<span class="go" title="隨身">🚇</span>':''}</div>`;
+  if(col)return `<div class="card wip"><div class="wh"><h2>進行中的作品 ${act.length}</h2><button data-act="wiptog">展開</button></div></div>`;
+  const c=k=>act.filter(F[k]).length;
+  return `<div class="card wip"><div class="wh"><h2>進行中的作品 ${act.length}</h2><button data-act="wiptog">收合</button></div>
+  ${act.length?`<div class="chips2">${[['all','全部'],['go','🚇 隨身'],['ends','剩收線']].map(([k,l])=>`<button class="${S.wf===k?'on':''}" data-act="wipf" data-v="${k}">${l} ${c(k)}</button>`).join('')}</div>`:''}
+  <div>${list.map(row).join('')||(act.length?'<p class="hint" style="margin:6px 0">沒有符合的作品</p>':'')}</div>
+  <div class="wadd"><input id="wipnew" placeholder="新增作品,例:灰色圍巾" enterkeyhint="done"><button data-act="wipadd" aria-label="新增">＋</button></div>
+  ${done.length?`<button class="wmore" data-act="wipdone">${S.showDone?'收起':'看'}已完成的 ${done.length} 件</button>${S.showDone?done.map(row).join(''):''}`:''}</div>`;
+}
+async function wipAdd(){
+  const el=$('#wipnew');const name=el?.value.trim();if(!name)return;el.value='';
+  try{await S.wcol.doc('w'+Date.now().toString(36)).set({name,status:'knit',portable:false,note:'',pid:'',createdAt:Date.now(),updatedAt:Date.now()});setTimeout(()=>$('#wipnew')?.focus(),50)}
+  catch(e){el.value=name;toast('新增失敗,請再試一次')}
+}
+function openWip(w){
+  let st=wst(w),port=!!w.portable;
+  const html=`<div class="fm"><label style="margin-top:0">作品名稱</label><input id="wn" value="${esc(w.name)}">
+  <label>狀態</label><div class="chips2" id="wst" style="flex-wrap:wrap;margin-bottom:0">${Object.entries(WST).map(([k,l])=>`<button type="button" data-s="${k}" class="${st===k?'on':''}">${l}</button>`).join('')}</div>
+  <div class="tog" style="margin:14px 0 0;box-shadow:none;background:var(--card)"><span>🚇 隨身<br><small style="color:var(--mute);font-size:12.5px">捷運上、午休就能做,不用收線或對照織圖</small></span><button type="button" class="sw${port?' on':''}" id="wport" aria-label="隨身"></button></div>
+  <label>備註</label><textarea id="wnote" rows="2" placeholder="例:剩右邊袖子、還差一個毛球">${esc(w.note||'')}</textarea>
+  <label>連結織圖(選填)</label><select id="wpid"><option value="">不連結</option>${S.patterns.map(p=>`<option value="${p.id}" ${w.pid===p.id?'selected':''}>${esc(p.title||'未命名織圖')}</option>`).join('')}</select></div>
+  ${w.pid&&S.patterns.some(p=>p.id===w.pid)?'<button class="btn ghost" id="wgo">打開織圖</button>':''}
+  <button class="btn" id="wsave">儲存</button><button class="btn danger" id="wdel">刪除</button>`;
+  openSheet('作品',html,sh=>{
+    sh.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{st=b.dataset.s;sh.querySelectorAll('[data-s]').forEach(x=>x.classList.toggle('on',x.dataset.s===st))});
+    sh.querySelector('#wport').onclick=function(){port=!port;this.classList.toggle('on',port)};
+    const g=sh.querySelector('#wgo');if(g)g.onclick=()=>{closeSheet();location.hash='#/p/'+w.pid};
+    sh.querySelector('#wsave').onclick=async function(){
+      const name=sh.querySelector('#wn').value.trim();if(!name){toast('作品名稱不能空白');return}
+      this.disabled=true;
+      try{await S.wcol.doc(w.id).update({name,status:st,portable:port,note:sh.querySelector('#wnote').value.trim(),pid:sh.querySelector('#wpid').value,updatedAt:Date.now(),...(st==='done'&&w.status!=='done'?{doneAt:Date.now()}:{})});closeSheet();toast(st==='done'?'完成了,辛苦了!':'已儲存')}
+      catch(e){this.disabled=false;toast('儲存失敗,請再試一次')}
+    };
+    sh.querySelector('#wdel').onclick=async()=>{if(!confirm(`確定要刪除「${w.name}」嗎?`))return;try{await S.wcol.doc(w.id).delete();closeSheet()}catch(e){toast('刪除失敗')}};
+  });
+}
+
 /* ---------- diary ---------- */
 function doneAt(p,r){const v=p.rows[r.id];if(typeof v==='number')return v;const t=p.timers[r.id];const l=t?.segs?.[t.segs.length-1];return l?.e||null}
 function diaryItems(pat){
@@ -852,7 +918,7 @@ async function shareFiles(ids,base){
 }
 function exportData(){
   const obj={docs:{patterns:{},progress:{},yarns:{},journal:{}}};
-  S.patterns.forEach(({id,...v})=>obj.docs.patterns[id]=v);S.yarns.forEach(({id,...v})=>obj.docs.yarns[id]=v);S.journal.forEach(({id,...v})=>obj.docs.journal[id]=v);
+  S.patterns.forEach(({id,...v})=>obj.docs.patterns[id]=v);S.yarns.forEach(({id,...v})=>obj.docs.yarns[id]=v);S.journal.forEach(({id,...v})=>obj.docs.journal[id]=v);obj.docs.projects={};S.projects.forEach(({id,...v})=>obj.docs.projects[id]=v);
   Object.entries(S.prog).forEach(([id,v])=>obj.docs.progress[id]=v);
   const b=new Blob([JSON.stringify(obj)],{type:'application/json'});const name='knitbook-backup-'+new Date().toISOString().slice(0,10)+'.json';
   const file=new File([b],name,{type:'application/json'});
@@ -905,6 +971,7 @@ function openMaterial(pat){
 }
 
 /* ---------- events ---------- */
+document.addEventListener('keydown',e=>{if(e.target.id==='wipnew'&&e.key==='Enter'&&!e.isComposing){e.preventDefault();wipAdd()}});
 document.addEventListener('input',e=>{if(e.target.id==='ysearch'){S.yq=e.target.value;const l=$('#ylist');if(l)l.innerHTML=yarnList()}});
 document.addEventListener('change',e=>{if(e.target.id==='file'&&e.target.files.length)pickFiles([...e.target.files]);if(e.target.id==='importf'&&e.target.files[0])doImport(e.target.files[0])});
 document.addEventListener('focusout',async e=>{
@@ -923,6 +990,11 @@ document.getElementById('app').addEventListener('click',async e=>{
   if(act==='logout'){if(confirm('要在這台裝置登出嗎?雲端資料不會刪除。')){localStorage.removeItem('kb-url');localStorage.removeItem('kb-pass');localStorage.removeItem('kb-cache');location.hash='#/';location.reload()}return}
   if(act==='savep'){savePattern();return}
   if(act==='zoom'){a.classList.toggle('zoom');return}
+  if(act==='wiptog'){localStorage.setItem('kb-wipcol',localStorage.getItem('kb-wipcol')==='1'?'0':'1');render();return}
+  if(act==='wipf'){S.wf=a.dataset.v;render();return}
+  if(act==='wipadd'){wipAdd();return}
+  if(act==='wipdone'){S.showDone=!S.showDone;render();return}
+  if(act==='wipopen'){const w=S.projects.find(x=>x.id===a.dataset.id);if(w)openWip(w);return}
   if(act==='yseg'){location.hash=a.dataset.v==='y'?'#/yarn':'#/';return}
   if(act==='yfilter'){S.ytab=a.dataset.v;render();return}
   if(act==='yadd'){openYarn(null);return}
