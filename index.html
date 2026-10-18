@@ -263,6 +263,15 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 .wadd input{flex:1;border:1.5px solid var(--line);background:var(--bg);border-radius:14px;padding:9px 12px;font-size:15px;min-width:0}
 .wadd button{border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;width:44px;font-size:20px}
 .wmore{display:block;width:100%;border:0;background:none;color:var(--mute);font-size:13px;padding:8px 0 2px}
+.ph2 .crp{position:absolute;left:4px;bottom:4px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;border-radius:999px;padding:2px 8px;pointer-events:none}
+.ph2 img{cursor:pointer}
+.crop{position:fixed;inset:0;z-index:40;background:#1c140e;display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top,0px)) 14px calc(14px + env(safe-area-inset-bottom,0px))}
+.crop .ct{color:#f1e5d6;text-align:center;font-size:14px;margin:4px 0 10px}
+.crop .cw{flex:1;min-height:0;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;touch-action:none;user-select:none;-webkit-user-select:none}
+.crop .cw img{max-width:100%;max-height:100%;display:block;pointer-events:none;-webkit-touch-callout:none}
+.crop .cr{position:absolute;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.45);border-radius:4px;pointer-events:none}
+.crop .cb{display:flex;gap:10px}
+.crop .cb .btn{margin-top:12px}
 .toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 .toast.on{opacity:1}
 </style>
@@ -671,6 +680,37 @@ function hookText(codes,other){
     s=[lace.length?fmt(lace):'',reg.length?fmt(reg,/mm$/.test(reg[reg.length-1][0])?'':' 號'):''].filter(Boolean).join('、')}
   return [s,other].filter(Boolean).join('、');
 }
+let OCRW=null,OCRL='',OCRLOG=null;
+async function getOCR(langs,logger){
+  OCRLOG=logger;const key=langs.join('+');
+  if(OCRW&&OCRL===key)return OCRW;
+  if(OCRW){try{await OCRW.terminate()}catch(e){}OCRW=null}
+  const T=await loadTesseract();OCRW=await T.createWorker(key,1,{logger:m=>OCRLOG&&OCRLOG(m)});OCRL=key;return OCRW;
+}
+function loadImg(src){return new Promise((res,rej)=>{const im=new Image();im.crossOrigin='anonymous';im.onload=()=>res(im);im.onerror=rej;im.src=typeof src==='string'?src:URL.createObjectURL(src)})}
+async function prepOCR(src,box){
+  const im=await loadImg(src);const sx=box?box.x:0,sy=box?box.y:0,sw=box?box.w:im.naturalWidth,sh=box?box.h:im.naturalHeight;
+  const sc=Math.max(1,Math.min(4,1600/Math.max(sw,sh)));const c=document.createElement('canvas');c.width=Math.round(sw*sc);c.height=Math.round(sh*sc);
+  const x=c.getContext('2d');x.imageSmoothingQuality='high';x.drawImage(im,sx,sy,sw,sh,0,0,c.width,c.height);
+  const d=x.getImageData(0,0,c.width,c.height),p=d.data;const hist=new Array(256).fill(0);
+  for(let i=0;i<p.length;i+=4){const g=Math.round(.299*p[i]+.587*p[i+1]+.114*p[i+2]);p[i]=g;hist[g]++}
+  const tot=p.length/4;let lo=0,hi=255,acc=0;for(;lo<255;lo++){acc+=hist[lo];if(acc>tot*.02)break}acc=0;for(;hi>0;hi--){acc+=hist[hi];if(acc>tot*.02)break}
+  const r=Math.max(1,hi-lo);for(let i=0;i<p.length;i+=4){const g=Math.max(0,Math.min(255,(p[i]-lo)*255/r));p[i]=p[i+1]=p[i+2]=g}
+  x.putImageData(d,0,0);return new Promise(res=>c.toBlob(res,'image/png'));
+}
+function cropPick(src){return new Promise(async res=>{
+  const ov=document.createElement('div');ov.className='crop';
+  ov.innerHTML=`<p class="ct">用手指拖出一個框,框住要辨識的文字</p><div class="cw"><img alt=""><div class="cr hide"></div></div><div class="cb"><button class="btn ghost" data-c="0">取消</button><button class="btn" data-c="1" disabled>辨識這塊</button></div>`;
+  document.body.append(ov);const img=ov.querySelector('img'),wrap=ov.querySelector('.cw'),rc=ov.querySelector('.cr'),ok=ov.querySelector('[data-c="1"]');
+  img.src=typeof src==='string'?src:URL.createObjectURL(src);let a=null,b=null;
+  const pt=e=>{const r=img.getBoundingClientRect();return{x:Math.max(0,Math.min(r.width,e.clientX-r.left)),y:Math.max(0,Math.min(r.height,e.clientY-r.top))}};
+  const paint=()=>{if(!a||!b)return;const x=Math.min(a.x,b.x),y=Math.min(a.y,b.y),w=Math.abs(a.x-b.x),h=Math.abs(a.y-b.y);const ir=img.getBoundingClientRect(),wr=wrap.getBoundingClientRect();Object.assign(rc.style,{left:(ir.left-wr.left+x)+'px',top:(ir.top-wr.top+y)+'px',width:w+'px',height:h+'px'});rc.classList.remove('hide');ok.disabled=w<12||h<8};
+  wrap.addEventListener('pointerdown',e=>{e.preventDefault();wrap.setPointerCapture(e.pointerId);a=pt(e);b=a;paint()});
+  wrap.addEventListener('pointermove',e=>{if(!a||!e.buttons&&e.pointerType==='mouse')return;if(e.pointerType!=='mouse'||e.buttons){b=pt(e);paint()}});
+  wrap.addEventListener('pointerup',e=>{if(a){b=pt(e);paint()}});
+  const done=async v=>{let out=null;if(v&&a&&b){const r=img.getBoundingClientRect(),k=img.naturalWidth/r.width;out=await prepOCR(img.src,{x:Math.min(a.x,b.x)*k,y:Math.min(a.y,b.y)*k,w:Math.abs(a.x-b.x)*k,h:Math.abs(a.y-b.y)*k})}ov.remove();res(out)};
+  ov.querySelector('[data-c="0"]').onclick=()=>done(false);ok.onclick=()=>done(true);
+})}
 function ocrLangs(){try{return (localStorage.getItem('kb-ocr')||'jpn+eng').split('+')}catch(e){return['jpn','eng']}}
 function loadTesseract(){return new Promise((res,rej)=>{if(window.Tesseract)return res(window.Tesseract);const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';s.onload=()=>res(window.Tesseract);s.onerror=rej;document.head.append(s)})}
 const MM2HOOK={'2':'2/0','2.0':'2/0','2.3':'3/0','2.5':'4/0','3':'5/0','3.0':'5/0','3.5':'6/0','4':'7/0','4.0':'7/0','4.5':'7.5/0','5':'8/0','5.0':'8/0','5.5':'9/0','6':'10/0','6.0':'10/0','7':'7mm','8':'8mm','10':'10mm','12':'12mm','15':'15mm'};
@@ -702,7 +742,7 @@ function openYarn(y){
   <div class="gal" id="ygal"></div>
   <div style="display:flex;gap:8px;margin-top:8px"><label class="ybtn">📷 加照片<input type="file" id="yfile" accept="image/*" multiple hidden></label><button class="ybtn" id="yread" type="button" style="border-style:solid">讀取標籤</button></div>
   <label>標籤語言</label><div class="chips2" id="ylang" style="flex-wrap:wrap;margin-bottom:0">${[['jpn','日文'],['chi_tra','繁中'],['kor','韓文'],['eng','英文']].map(([k,l])=>`<button type="button" data-lang="${k}" class="${ocrLangs().includes(k)?'on':''}">${l}</button>`).join('')}</div>
-  <p class="hint" id="ystat">標籤正反面可以分開拍,再按「讀取標籤」。克數、長度、針號、粗細會自動填,其他文字點一下就能放進目前選取的欄位。</p>
+  <p class="hint" id="ystat">點照片可以只框選要辨識的部分,準確度會高很多;按「讀取標籤」則是整張一起讀。克數、長度、針號、粗細會自動填,其他文字點一下就能放進目前選取的欄位。</p>
   <div class="note hide" id="yhint" style="margin:0 0 10px"></div>
   <div class="chips2 hide" id="yocr" style="flex-wrap:wrap"></div>
   <div class="two">${F('brand','品牌')}${F('name','品名')}</div>
@@ -722,8 +762,9 @@ function openYarn(y){
     const v=k=>sh.querySelector(`[data-f="${k}"]`);const gal=sh.querySelector('#ygal'),st=sh.querySelector('#ystat');
     const tot=()=>{sh.querySelector('#ytot').textContent=yTotal({qty:v('qty').value,unit:v('unit').value,gPer:v('gPer').value,mPer:v('mPer').value})};
     ['qty','unit','gPer','mPer'].forEach(k=>v(k).addEventListener('input',tot));tot();
-    const draw=()=>{gal.innerHTML=keep.map((id,i)=>`<div class="ph2"><img src="${blobUrl(id)}" alt=""><button data-k="${i}">✕</button></div>`).join('')+add.map((a,i)=>`<div class="ph2"><img src="${a.url}" alt=""><button data-a="${i}">✕</button></div>`).join('');
+    const draw=()=>{gal.innerHTML=keep.map((id,i)=>`<div class="ph2"><img src="${blobUrl(id)}" alt="" data-ck="${i}"><button data-k="${i}">✕</button><span class="crp">框選</span></div>`).join('')+add.map((a,i)=>`<div class="ph2"><img src="${a.url}" alt="" data-ca="${i}"><button data-a="${i}">✕</button><span class="crp">框選</span></div>`).join('');
       gal.style.marginTop=(keep.length+add.length)?'':'0';
+      gal.querySelectorAll('[data-ck]').forEach(im=>im.onclick=()=>cropAndRead(blobUrl(keep[+im.dataset.ck])));gal.querySelectorAll('[data-ca]').forEach(im=>im.onclick=()=>cropAndRead(add[+im.dataset.ca].url));
       gal.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{keep.splice(+b.dataset.k,1);draw()});gal.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{URL.revokeObjectURL(add[+b.dataset.a].url);add.splice(+b.dataset.a,1);draw()})};
     draw();
     sh.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{closeSheet();location.hash='#/p/'+b.dataset.go});
@@ -738,35 +779,40 @@ function openYarn(y){
     const LN={jpn:'日文',chi_tra:'繁中',kor:'韓文',eng:'英文'};
     const setLangs=l=>{sh.querySelectorAll('[data-lang]').forEach(b=>b.classList.toggle('on',l.includes(b.dataset.lang)));try{localStorage.setItem('kb-ocr',l.join('+'))}catch(e){}};
     const rbtn=sh.querySelector('#yread');const tried=new Set();
-    async function runOCR(langs){
-      if(!keep.length&&!add.length){st.textContent='先加一張標籤照片。';return}
+    let allLines=[];
+    const drawLines=()=>{const box=sh.querySelector('#yocr');box.classList.toggle('hide',!allLines.length);
+      box.innerHTML=allLines.map((l,i)=>`<button type="button" data-l="${i}">${esc(l)}</button>`).join('');
+      box.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{const s=allLines[+b.dataset.l];target.value=target.value?target.value+' '+s:s;target.focus();b.classList.add('on')})};
+    async function runOCR(langs,opts={}){
+      if(!opts.blobs&&!keep.length&&!add.length){st.textContent='先加一張標籤照片。';return}
       if(!langs.length){st.textContent='至少選一種標籤語言。';return}
       const hint=sh.querySelector('#yhint');hint.classList.add('hide');
       langs.forEach(l=>tried.add(l));rbtn.disabled=true;st.textContent='載入文字辨識…第一次使用要下載語言資料,會比較久。';
-      let worker;
       try{
-        const T=await loadTesseract();
-        worker=await T.createWorker(langs.join('+'),1,{logger:m=>{if(m.status==='recognizing text')st.textContent=`辨識中 ${Math.round(m.progress*100)}%`}});
-        const blobs=[...await Promise.all(keep.map(id=>fetch(blobUrl(id)).then(r=>r.blob()))),...add.map(a=>a.blob)];
+        const worker=await getOCR(langs,m=>{if(m.status==='recognizing text')st.textContent=`辨識中 ${Math.round(m.progress*100)}%`});
+        await worker.setParameters({tessedit_pageseg_mode:opts.blobs?'6':'3'});
+        let blobs=opts.blobs;
+        if(!blobs){const raw=[...await Promise.all(keep.map(id=>fetch(blobUrl(id)).then(r=>r.blob()))),...add.map(a=>a.blob)];blobs=[];for(const b of raw)blobs.push(await prepOCR(b))}
         let text='',confs=[];for(const b of blobs){const {data}=await worker.recognize(b);text+=data.text+'\n';if(data.text.trim())confs.push(data.confidence)}
         const conf=confs.length?Math.round(confs.reduce((a,b)=>a+b,0)/confs.length):0;
         const low=conf<60;const n=low?0:ocrFill(text,{v,hooks,setW,drawH,getW:()=>weight});tot();
         const lines=[...new Set(text.split('\n').map(s=>s.replace(/\s{2,}/g,' ').trim()).filter(s=>s.length>=2))];
-        const box=sh.querySelector('#yocr');box.classList.toggle('hide',!lines.length);
-        box.innerHTML=lines.map((l,i)=>`<button type="button" data-l="${i}">${esc(l)}</button>`).join('');
-        box.querySelectorAll('[data-l]').forEach(b=>b.onclick=()=>{const s=lines[+b.dataset.l];target.value=target.value?target.value+' '+s:s;target.focus();b.classList.add('on')});
-        st.textContent=(n?`自動填了 ${n} 項。`:'')+(lines.length?'先點要填的欄位,再點下面的文字放進去。':'沒辨識到文字,可以拍近一點、光線亮一點再試。');
+        allLines=opts.blobs?[...new Set([...lines,...allLines])]:lines;drawLines();
+        st.textContent=(n?`自動填了 ${n} 項。`:'')+(lines.length?'先點要填的欄位,再點下面的文字放進去。':'沒辨識到文字,可以點照片框選文字的部分再試。');
         if(low){
           const alts=['jpn','chi_tra','kor'].filter(l=>!tried.has(l));
-          const msg=alts.length?'可能是語言選錯了,要換一種語言再讀一次嗎?':'幾種語言都試過了,問題比較可能出在照片:拍近一點、讓標籤平整、光線亮一點,或只拍有字的部分再試一次。';
+          const msg=alts.length?'可能是語言選錯了,要換一種語言再讀一次嗎?':'幾種語言都試過了,問題比較可能出在照片:點照片只框選有字的部分,或拍近一點、讓標籤平整、光線亮一點再試。';
           hint.innerHTML=`<p style="margin:0 0 8px">辨識結果不太可靠${lines.length?`(信心 ${conf} 分)`:''},所以先不自動填寫。${msg}</p><div class="chips2" style="flex-wrap:wrap;margin:0">${alts.map(l=>`<button type="button" data-re="${l}">改用${LN[l]}重讀</button>`).join('')}${lines.length?'<button type="button" data-force="1">照樣自動填寫</button>':''}</div>`;
           hint.classList.remove('hide');
-          hint.querySelectorAll('[data-re]').forEach(b=>b.onclick=()=>{const l=[b.dataset.re,'eng'];setLangs(l);runOCR(l)});
+          hint.querySelectorAll('[data-re]').forEach(b=>b.onclick=()=>{const l=[b.dataset.re,'eng'];setLangs(l);runOCR(l,opts)});
           const fb=hint.querySelector('[data-force]');if(fb)fb.onclick=()=>{const k=ocrFill(text,{v,hooks,setW,drawH,getW:()=>weight});tot();hint.classList.add('hide');st.textContent=k?`自動填了 ${k} 項,請檢查一下有沒有讀錯。`:'沒有可以自動填的項目。'};
         }
       }catch(err){st.textContent='文字辨識載入失敗,請檢查網路後再試。'}
-      try{await worker?.terminate()}catch(_){}
       rbtn.disabled=false;
+    }
+    async function cropAndRead(src){
+      const blob=await cropPick(src);if(!blob)return;
+      runOCR([...sh.querySelectorAll('[data-lang].on')].map(b=>b.dataset.lang),{blobs:[blob]});
     }
     rbtn.onclick=()=>runOCR([...sh.querySelectorAll('[data-lang].on')].map(b=>b.dataset.lang));
     sh.querySelector('#ysave').onclick=async function(){
