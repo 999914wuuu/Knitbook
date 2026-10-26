@@ -263,6 +263,19 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 .wadd input{flex:1;border:1.5px solid var(--line);background:var(--bg);border-radius:14px;padding:9px 12px;font-size:15px;min-width:0}
 .wadd button{border:0;background:var(--accent);color:var(--accent-ink);border-radius:14px;width:44px;font-size:20px}
 .wmore{display:block;width:100%;border:0;background:none;color:var(--mute);font-size:13px;padding:8px 0 2px}
+.ytools{display:flex;gap:8px;margin:-4px 0 14px;align-items:center;overflow-x:auto}
+.ysel{flex:1;min-width:0;border:1.5px solid var(--line);background:var(--card);border-radius:999px;padding:7px 10px;font-size:13.5px;color:var(--mute);-webkit-appearance:none;appearance:none;text-overflow:ellipsis}
+.ysel.on{border-color:var(--accent);color:var(--ink)}
+.yview{flex:none;width:38px;height:36px;border:1.5px solid var(--line);background:var(--card);border-radius:12px;font-size:17px;color:var(--ink)}
+.ygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:10px}
+.ycard{cursor:pointer}
+.ycard .ph{position:relative;aspect-ratio:1;border-radius:16px;overflow:hidden;background:var(--repbg);display:flex;align-items:center;justify-content:center;box-shadow:var(--sh)}
+.ycard .ph img{width:100%;height:100%;object-fit:cover}
+.ycard .ph svg{width:56%}
+.ycard .dot{position:absolute;top:7px;right:7px;width:11px;height:11px;border-radius:50%;border:2px solid #fff;background:#8fae8b}
+.ycard .dot.using{background:var(--accent)}.ycard .dot.left{background:#8fa3b5}
+.ycard .cn2{font-size:11px;color:var(--mute);margin:0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.ycard .cn{font-size:12.5px;margin:5px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
 .toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 .toast.on{opacity:1}
 </style>
@@ -483,13 +496,31 @@ function vInfo(pat){
 }
 
 /* ---------- sheet ---------- */
+let sheetHist=false;
 function openSheet(title,html,after){
   const sh=$('#sheet');sh.innerHTML=`<div class="shead"><b>${title}</b><button class="x" data-close>關閉</button></div>${html}`;
-  sh.scrollTop=0;document.body.classList.add('sh');after&&after(sh);
+  sh.scrollTop=0;S.sheetDirty=false;document.body.classList.add('sh');
+  if(!sheetHist){try{history.pushState({kbSheet:1},'')}catch(e){}sheetHist=true}
+  after&&after(sh);
 }
-function closeSheet(){document.body.classList.remove('sh');S.askCtl?.abort()}
-$('#mask').onclick=closeSheet;
-$('#sheet').addEventListener('click',e=>{if(e.target.closest('[data-close]'))closeSheet()});
+const sheetOpen=()=>document.body.classList.contains('sh');
+function closeSheet(){document.body.classList.remove('sh');S.askCtl?.abort();S.sheetDirty=false;sheetHist=false}
+function requestClose(){if(S.sheetDirty&&!confirm('有還沒儲存的內容,確定要關掉嗎?'))return;closeSheet()}
+$('#mask').onclick=requestClose;
+$('#sheet').addEventListener('click',e=>{if(e.target.closest('[data-close]'))requestClose()});
+$('#sheet').addEventListener('input',()=>{S.sheetDirty=true});
+$('#sheet').addEventListener('change',()=>{S.sheetDirty=true});
+window.addEventListener('popstate',()=>{
+  if(!sheetOpen()){sheetHist=false;return}
+  if(S.sheetDirty&&!confirm('有還沒儲存的內容,確定要關掉嗎?')){try{history.pushState({kbSheet:1},'')}catch(e){}sheetHist=true;return}
+  closeSheet();
+});
+const IDB={db:null,
+  open(){if(this.db)return Promise.resolve(this.db);return new Promise((res,rej)=>{const r=indexedDB.open('knitbook',1);r.onupgradeneeded=()=>r.result.createObjectStore('drafts');r.onsuccess=()=>{this.db=r.result;res(r.result)};r.onerror=()=>rej(r.error)})},
+  async get(k){try{const db=await this.open();return await new Promise(res=>{const q=db.transaction('drafts').objectStore('drafts').get(k);q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})}catch(e){return null}},
+  async set(k,v){try{const db=await this.open();return await new Promise(res=>{const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false)})}catch(e){return false}},
+  async del(k){try{const db=await this.open();return await new Promise(res=>{const tx=db.transaction('drafts','readwrite');tx.objectStore('drafts').delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false)})}catch(e){return false}}
+};
 
 const SV=i=>`<svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">${i}</svg>`;
 const SYM=[[SV('<ellipse cx="14" cy="14" rx="5" ry="3.2" fill="currentColor" stroke="none"/>'),'slst','引拔針','引き抜き編み'],[SV('<ellipse cx="14" cy="14" rx="3.6" ry="6.5"/>'),'ch','鎖針','鎖編み'],[SV('<path d="M14 6v16M6 14h16"/>'),'sc','短針','細編み'],[SV('<path d="M14 6v17M9 6h10"/>'),'hdc','中長針','中長編み'],[SV('<path d="M14 6v17M9 6h10M10.5 16.5l7-4"/>'),'dc','長針','長編み'],[SV('<path d="M14 5L8 24M14 5l6 19M10 5h8M7.5 16.5l5-3M15.5 13.5l5 3"/>'),'dc2tog','長針 2 併 1','長編み2目一度'],[SV('<path d="M3 21C6 9 22 9 25 21"/><text x="14" y="20" font-size="8" text-anchor="middle" fill="currentColor" stroke="none">n</text>'),'ch-n sp','鎖 n 針空隙','鎖n目のスペース']];
@@ -528,7 +559,7 @@ function splitTop(s){
   out.push(cur);return out;
 }
 function simple(s){return splitTop(s).map(x=>restoreMk(x).trim().replace(/[.。]$/,'').trim()).filter(x=>x&&!/^[\s,.;:]+$/.test(x)).map(e=>({e,z:''}))}
-const REPRE=/^\s*[,.;、。]?\s*((?:rep(?:eat)?|work)\b[^,;.、。]*)/i;
+const REPRE=/^\s*[,.;、。，]?\s*((?:(?:rep(?:eat)?|work)\b|重複|重覆|繰り返|くり返)[^,;.、。，]*)/i;
 function seq(s){
   const out=[];
   while(s.length){
@@ -544,7 +575,7 @@ function seq(s){
     }
     const j=s.indexOf(ch,i+1);
     if(j<0){
-      const rest=s.slice(i+1);const rm=rest.match(/[,;.、。]?\s*((?:rep(?:eat)?)\b[^,;.、。]*)/i);
+      const rest=s.slice(i+1);const rm=rest.match(/[,;.、。，]?\s*((?:rep(?:eat)?\b|重複|重覆|繰り返|くり返)[^,;.、。，]*)/i);
       if(rm){out.push({rep:restoreMk(rm[1].trim()),repz:'',s:seq(rest.slice(0,rm.index))});s=rest.slice(rm.index+rm[0].length);continue}
       out.push(...simple(rest));break;
     }
@@ -556,10 +587,12 @@ function seq(s){
 }
 function parseSteps(raw){return seq(raw.replace(/(rep(?:eat)?\s+from\s+)\*/gi,'$1☆').replace(/\*\*\s*-\s*\*\*/g,'⁑').replace(/\*\s*-\s*\*/g,'⁂').replace(/\*\*/g,'§'))}
 function parsePattern(text){
-  const rows=[],pre=[];
+  const rows=[],pre=[];let sec='';
   for(const ln of text.replace(/\r/g,'').split('\n')){
-    const t=ln.trim();if(!t)continue;const m=t.match(LABEL);
-    if(m)rows.push({label:normLabel(m[1]),raw:t.slice(m[0].length).trim()});
+    const t=ln.trim();if(!t)continue;
+    const sm=t.match(/^(?:【([^】]+)】|■\s*(.+))$/);if(sm){sec=(sm[1]||sm[2]).trim();continue}
+    const m=t.match(LABEL);
+    if(m)rows.push({label:(sec?sec+' ':'')+normLabel(m[1]),raw:t.slice(m[0].length).trim()});
     else if(rows.length)rows[rows.length-1].raw+=(rows[rows.length-1].raw?' ':'')+t;
     else pre.push(t);
   }
@@ -589,7 +622,7 @@ function vNew(){
   let h=`<header class="ph"><div class="in"><div class="top" style="padding-bottom:10px"><a class="back" href="#/" aria-label="回織圖本">‹</a><h1>新增織圖</h1></div></div></header><div class="wrap">`;
   if(d.status!=='preview'){
     h+=`<div class="card fm"><label style="margin-top:0">名稱</label><input id="ntl" value="${esc(d.title)}" placeholder="織圖名稱">
-    <label>織圖文字</label><textarea class="ta" id="ntext" style="min-height:220px" placeholder="把織圖文字貼在這裡,每段以 R1、Rnd 2、Row 3、第 4 段 開頭">${esc(d.text)}</textarea>
+    <label>織圖文字</label><textarea class="ta" id="ntext" style="min-height:220px" placeholder="把織圖文字貼在這裡,每段以 R1、Rnd 2、Row 3、第 4 段 開頭;有好幾個部位時,在前面加一行【頭】【身體】">${esc(d.text)}</textarea>
     <p class="hint" style="margin:6px 2px 0">每段會用逗號拆成步驟,*…* 和 […] N times 會變成重複框;段落最後括號裡的針數會自動抓出來。</p></div>
     <label class="drop" style="padding:18px">${d.pages.length?`<b>重新選擇原圖</b>`:`<b>附上原圖(選填)</b><span style="font-size:13px">PDF 或照片,會放在「原圖」分頁對照用</span>`}<input type="file" id="file" accept="application/pdf,image/jpeg,image/png,image/webp" multiple hidden></label>
     ${d.status==='prep'?'<p class="hint" style="text-align:center">讀取檔案中…</p>':''}
@@ -647,17 +680,29 @@ const YST={new:'未使用',using:'使用中',left:'剩餘'};
 const yName=y=>[y.brand,y.name,y.color].filter(Boolean).join(' ')||'未命名毛線';
 function ago(d){if(!d)return'';const t=new Date(d);if(isNaN(t))return'';const m=Math.floor((Date.now()-t)/2629800000);return m<1?'這個月買的':m<12?`${m} 個月前買的`:`${Math.floor(m/12)} 年${m%12?' '+(m%12)+' 個月':''}前買的`}
 function homeHead(k){return `<div class="hero">${SHEEP}<div style="flex:1"><h1>織圖本</h1><p>${S.patterns.length} 份織圖・${S.yarns.length} 款毛線${S.offline?'・離線中':''}</p></div><a class="back" href="#/settings" aria-label="設定" style="font-size:17px">⚙︎</a></div>${vWip()}<div class="seg"><button class="${k==='p'?'on':''}" data-act="yseg" data-v="p">織圖</button><button class="${k==='y'?'on':''}" data-act="yseg" data-v="y">毛線</button></div>`}
+const YV={get:k=>{try{return localStorage.getItem('kb-y-'+k)||''}catch(e){return''}},set:(k,v)=>{try{localStorage.setItem('kb-y-'+k,v)}catch(e){}}};
 function vYarnHome(){
   const c=s=>S.yarns.filter(y=>s==='all'||y.status===s).length;
+  const brands=[...new Set(S.yarns.map(y=>(y.brand||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ja'));
+  const hk=HOOKS.filter(h=>S.yarns.some(y=>(y.hooks||[]).includes(h[0])));
+  if(YV.get('brand')&&!brands.includes(YV.get('brand')))YV.set('brand','');if(YV.get('hook')&&!hk.some(h=>h[0]===YV.get('hook')))YV.set('hook','');
+  const fb=YV.get('brand'),fh=YV.get('hook'),so=YV.get('sort')||'new',vw=YV.get('view')||'list';
+  const sel=(id,cur,opts,ph)=>`<select class="ysel${cur?' on':''}" id="${id}"><option value="">${ph}</option>${opts.map(([v,l])=>`<option value="${esc(v)}" ${cur===v?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
   return `<div class="wrap">${homeHead('y')}<button class="add" data-act="yadd">＋ 新增毛線</button>
   ${S.yarns.length?`<input class="search" id="ysearch" placeholder="搜尋品牌、品名、色號、材質" value="${esc(S.yq)}">
   <div class="chips2">${[['all','全部'],['new','未使用'],['using','使用中'],['left','剩餘']].map(([k,l])=>`<button class="${S.ytab===k?'on':''}" data-act="yfilter" data-v="${k}">${l} ${c(k)}</button>`).join('')}</div>
-  <div id="ylist">${yarnList()}</div>`:`<div class="empty">${BALL.replace('<svg','<svg style="width:90px;height:90px"')}<p>還沒有毛線。<br>拍一下標籤,文字辨識會幫你填一部分資料。</p></div>`}</div>`;
+  <div class="ytools">${sel('fbrand',fb,brands.map(b=>[b,b]),'全部品牌')}${sel('fhook',fh,hk.map(h=>[h[0],h[1]]),'全部針號')}${sel('fsort',so==='new'?'':so,[['old','購入 舊→新'],['added','最近新增']],'購入 新→舊')}
+  <button class="yview" data-act="yview" aria-label="切換瀏覽模式">${vw==='card'?'☰':'▦'}</button></div>
+  <div id="ylist">${yarnList()}</div>`:`<div class="empty">${BALL.replace('<svg','<svg style="width:90px;height:90px"')}<p>還沒有毛線。<br>貼上購買網址,可以自動帶入資料。</p></div>`}</div>`;
 }
 function yarnList(){
-  const q=S.yq.trim().toLowerCase();
-  const L=S.yarns.filter(y=>(S.ytab==='all'||y.status===S.ytab)&&(!q||[y.brand,y.name,y.color,y.material,y.weight,y.hook,y.shop,y.note].join(' ').toLowerCase().includes(q)));
+  const q=S.yq.trim().toLowerCase(),fb=YV.get('brand'),fh=YV.get('hook'),so=YV.get('sort')||'new',vw=YV.get('view')||'list';
+  let L=S.yarns.filter(y=>(S.ytab==='all'||y.status===S.ytab)&&(!fb||(y.brand||'').trim()===fb)&&(!fh||(y.hooks||[]).includes(fh))&&(!q||[y.brand,y.name,y.color,y.material,y.weight,y.hook,y.shop,y.note].join(' ').toLowerCase().includes(q)));
+  const bd=y=>y.bought?Date.parse(y.bought):null;
+  if(so==='added')L=L.slice().sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  else L=L.slice().sort((a,b)=>{const x=bd(a),z=bd(b);if(x==null&&z==null)return (b.createdAt||0)-(a.createdAt||0);if(x==null)return 1;if(z==null)return -1;return so==='old'?x-z:z-x});
   if(!L.length)return `<p class="hint" style="text-align:center">沒有符合的毛線</p>`;
+  if(vw==='card')return `<div class="ygrid">${L.map(y=>`<div class="ycard" data-act="yopen" data-id="${y.id}"><div class="ph">${y.photo?`<img src="${blobUrl(y.photo)}" alt="" loading="lazy">`:BALL}<i class="dot ${y.status||'new'}"></i></div><div class="cn">${esc(y.color||y.name||yName(y))}</div>${y.color&&y.name?`<div class="cn2">${esc(y.name)}</div>`:''}</div>`).join('')}</div>`;
   return L.map(y=>`<div class="yc" data-act="yopen" data-id="${y.id}"><div class="ph">${y.photo?`<img src="${blobUrl(y.photo)}" alt="" loading="lazy">`:BALL}</div><div class="in"><div class="t1">${esc(yName(y))}</div>
   <div class="t2">${[y.material,y.weight,y.hook].filter(Boolean).map(esc).join('・')}</div>
   <div class="t2"><span class="pill ${y.status||'new'}">${YST[y.status]||'未使用'}</span>${y.qty?esc(y.qty+' '+(y.unit||'球')):''}${y.price&&!y.qty?esc(money(y.price,y.cur)):''}${yTotal(y)?'('+yTotal(y)+')':''}${y.bought?'・'+ago(y.bought):''}</div></div></div>`).join('');
@@ -754,12 +799,15 @@ const money=(n,c)=>{const s=(CURS.find(x=>x[0]===c)||CURS[0])[1];const v=+n;retu
 function yTotal(y){const q=parseFloat(y.qty),p=parseFloat(y.price);if(!q)return'';const ball=!y.unit||y.unit==='球';const g=parseFloat(y.gPer),m=parseFloat(y.mPer);
   return [ball&&g?'共 '+Math.round(q*g)+'g':'',ball&&m?'約 '+Math.round(q*m)+'m':'',p?'共 '+money(Math.round(q*p*100)/100,y.cur):''].filter(Boolean).join('・')}
 const yPhotos=y=>y.photos||(y.photo?[y.photo]:[]);
-function openYarn(y){
-  const ed=!!y;y=y||{status:'new',unit:'球',hooks:[],weight:''};
+function openYarn(y,pre){
+  const ed=!!y;y=y||{status:'new',unit:'球',hooks:[],weight:'',...(pre||{})};
   let keep=[...yPhotos(y)],add=[];let hooks=new Set(y.hooks||[]);let weight=y.weight||'';
   const used=ed?S.patterns.filter(p=>(p.yarnIds||[]).includes(y.id)):[];
-  const F=(k,l,ph='',ty='text')=>`<div><label>${l}</label><input data-f="${k}" type="${ty}" ${ty==='number'?'inputmode="decimal"':''} value="${esc(y[k]??'')}" placeholder="${ph}"></div>`;
+  const F=(k,l,ph='',ty='text',list='')=>`<div><label>${l}</label><input data-f="${k}" type="${ty}" ${ty==='number'?'inputmode="decimal"':''} ${list?`list="${list}" autocomplete="off"`:''} value="${esc(y[k]??'')}" placeholder="${ph}"></div>`;
+  const others=S.yarns.filter(x=>!ed||x.id!==y.id);
+  const uniq=a=>[...new Set(a.map(s=>(s||'').trim()).filter(Boolean))];
   const html=`<div class="fm">
+  <div class="note hide" id="ydraft" style="margin:0 0 10px"></div>
   <div class="gal" id="ygal"></div>
   <label class="ybtn" style="margin-top:8px">📷 加照片<input type="file" id="yfile" accept="image/*" multiple hidden></label>
   <label>購買網址</label><div class="wadd" style="margin-top:0"><input id="yurl" data-f="url" type="url" inputmode="url" value="${esc(y.url||'')}" placeholder="貼上商品頁面網址" autocapitalize="off" autocorrect="off"><button type="button" id="ygrab" style="width:auto;padding:0 14px;font-size:15px">讀取</button></div>
@@ -767,7 +815,9 @@ function openYarn(y){
   <p class="hint" id="ystat">貼上購買頁面的網址按「讀取」,會自動填入品名、規格和商品照片;沒抓到的資訊,點下方的文字就能放進目前選取的欄位。</p>
   <div class="hide" id="ycolwrap"><label>選色號</label><div class="chips2" id="ycol" style="flex-wrap:wrap"></div></div>
   <div class="chips2 hide" id="yocr" style="flex-wrap:wrap"></div>
-  <div class="two">${F('brand','品牌')}${F('name','品名')}</div>
+  <div class="two">${F('brand','品牌','','text','dl-brand')}${F('name','品名','','text','dl-name')}</div>
+  <datalist id="dl-brand">${uniq(others.map(x=>x.brand)).map(b=>`<option value="${esc(b)}">`).join('')}</datalist><datalist id="dl-name"></datalist>
+  <p class="hint hide" id="yfill" style="margin:6px 2px 0"></p>
   <div class="two">${F('color','色名/色號')}${F('material','材質')}</div>
   <label>粗細</label><div class="chips2" id="ywt" style="flex-wrap:wrap;margin-bottom:0">${WEIGHTS.map(w=>`<button type="button" data-w="${w}" class="${weight===w?'on':''}">${w}</button>`).join('')}</div>
   <label>建議針號(可複選)</label><div class="chips2" id="yhk" style="flex-wrap:wrap;margin-bottom:0">${HOOKS.map(h=>`<button type="button" data-h="${h[0]}" class="${hooks.has(h[0])?'on':''}">${h[1]}${h[2]?`<small style="display:block;font-size:10.5px;line-height:1.2">${h[2]}</small>`:''}</button>`).join('')}</div>
@@ -780,15 +830,40 @@ function openYarn(y){
   <div class="two"><div><label>購買日期</label><input type="date" data-f="bought" value="${esc(y.bought||'')}"></div>${F('shop','購買地點')}</div>
   <label>備註</label><textarea data-f="note" rows="2">${esc(y.note||'')}</textarea>
   ${used.length?`<label>用在</label><div class="ylink">${used.map(p=>`<button data-go="${p.id}">${esc(p.title)}</button>`).join('')}</div>`:''}
-  </div><button class="btn" id="ysave">儲存</button>${ed?'<button class="btn danger" id="ydel">刪除這款毛線</button>':''}`;
+  </div><button class="btn" id="ysave">儲存</button>${ed?'<button class="btn ghost" id="ydup">新增同款不同色</button><button class="btn danger" id="ydel">刪除這款毛線</button>':''}`;
   openSheet(ed?'毛線':'新增毛線',html,sh=>{
     const v=k=>sh.querySelector(`[data-f="${k}"]`);const gal=sh.querySelector('#ygal'),st=sh.querySelector('#ystat');
     const tot=()=>{sh.querySelector('#ytot').textContent=yTotal({qty:v('qty').value,unit:v('unit').value,gPer:v('gPer').value,mPer:v('mPer').value,price:v('price').value,cur:v('cur').value})};
     ['qty','unit','gPer','mPer','price','cur'].forEach(k=>v(k).addEventListener('input',tot));tot();
-    const draw=()=>{gal.innerHTML=keep.map((id,i)=>`<div class="ph2"><img src="${blobUrl(id)}" alt=""><button data-k="${i}">✕</button></div>`).join('')+add.map((a,i)=>`<div class="ph2"><img src="${a.url}" alt=""><button data-a="${i}">✕</button></div>`).join('');
+    let draw=()=>{gal.innerHTML=keep.map((id,i)=>`<div class="ph2"><img src="${blobUrl(id)}" alt=""><button data-k="${i}">✕</button></div>`).join('')+add.map((a,i)=>`<div class="ph2"><img src="${a.url}" alt=""><button data-a="${i}">✕</button></div>`).join('');
       gal.style.marginTop=(keep.length+add.length)?'':'0';
       gal.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{keep.splice(+b.dataset.k,1);draw()});gal.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>{URL.revokeObjectURL(add[+b.dataset.a].url);add.splice(+b.dataset.a,1);draw()})};
     draw();
+    const FK=['brand','name','color','material','hookOther','gPer','mPer','qty','unit','price','cur','status','bought','shop','note','url'];
+    let dT,saved=false;const saveDraft=()=>{if(ed||saved)return;clearTimeout(dT);dT=setTimeout(()=>{const f={};FK.forEach(k=>f[k]=v(k).value);const has=FK.some(k=>f[k]&&!['unit','cur','status'].includes(k))||add.length||hooks.size||weight;if(has)IDB.set('yarn-new',{f,hooks:[...hooks],weight,blobs:add.map(a=>a.blob),at:Date.now()})},400)};
+    sh.addEventListener('input',saveDraft);sh.addEventListener('change',saveDraft);sh.addEventListener('click',e=>{if(e.target.closest('[data-w],[data-h],[data-c],[data-a]'))setTimeout(saveDraft,0)});
+    const _draw=draw;draw=()=>{_draw();saveDraft()};
+    if(!ed&&!pre)IDB.get('yarn-new').then(dr=>{
+      if(!dr||Date.now()-dr.at>14*864e5)return;
+      const box=sh.querySelector('#ydraft');box.classList.remove('hide');
+      box.innerHTML=`<p style="margin:0 0 8px">上次新增到一半的毛線還沒存${dr.f.name?`(${esc(dr.f.name)})`:''},要還原嗎?</p><div class="chips2" style="margin:0"><button type="button" class="on" id="drok">還原</button><button type="button" id="drno">不用,重新填</button></div>`;
+      box.querySelector('#drok').onclick=()=>{FK.forEach(k=>{if(dr.f[k]!=null)v(k).value=dr.f[k]});if(dr.weight)setW(dr.weight);(dr.hooks||[]).forEach(h=>hooks.add(h));drawH();(dr.blobs||[]).forEach(b=>add.push({blob:b,url:URL.createObjectURL(b)}));draw();tot();S.sheetDirty=true;box.classList.add('hide')};
+      box.querySelector('#drno').onclick=()=>{IDB.del('yarn-new');box.classList.add('hide')};
+    });
+    const SPEC=['material','hookOther','gPer','mPer','unit','price','cur','shop','url'];
+    const drawNames=()=>{const b=v('brand').value.trim();sh.querySelector('#dl-name').innerHTML=uniq(others.filter(x=>!b||(x.brand||'').trim()===b).map(x=>x.name)).map(n=>`<option value="${esc(n)}">`).join('')};
+    drawNames();v('brand').addEventListener('input',drawNames);
+    const fillFrom=()=>{
+      const nm=v('name').value.trim(),b=v('brand').value.trim();if(!nm)return;
+      const src=others.filter(x=>(x.name||'').trim()===nm&&(!b||(x.brand||'').trim()===b)).sort((a,c)=>(c.createdAt||0)-(a.createdAt||0))[0];if(!src)return;
+      let n=0;if(!b&&src.brand){v('brand').value=src.brand;n++}
+      SPEC.forEach(k=>{const el=v(k);if(src[k]==null||src[k]==='')return;if(['unit','cur'].includes(k)){if(el.value!==src[k]){el.value=src[k];n++}return}if(!el.value){el.value=src[k];n++}});
+      if(!weight&&src.weight){setW(src.weight);n++}
+      if(!hooks.size&&(src.hooks||[]).length){src.hooks.forEach(h=>hooks.add(h));drawH();n++}
+      tot();if(n){const p=sh.querySelector('#yfill');p.textContent=`已帶入「${yName({brand:src.brand,name:src.name})}」的規格,只要填色號就好。`;p.classList.remove('hide');S.sheetDirty=true;if(typeof saveDraft==='function')saveDraft()}
+    };
+    v('name').addEventListener('change',fillFrom);v('name').addEventListener('blur',fillFrom);
+    const dup=sh.querySelector('#ydup');if(dup)dup.onclick=()=>{const base={...y};['color','qty','bought','note','photos','photo','status','id','createdAt'].forEach(k=>delete base[k]);base.status='new';closeSheet();setTimeout(()=>openYarn(null,base),50)};
     sh.querySelectorAll('[data-go]').forEach(b=>b.onclick=()=>{closeSheet();location.hash='#/p/'+b.dataset.go});
     const setW=w=>{weight=weight===w?'':w;sh.querySelectorAll('[data-w]').forEach(b=>b.classList.toggle('on',b.dataset.w===weight))};
     sh.querySelectorAll('[data-w]').forEach(b=>b.onclick=()=>setW(b.dataset.w));
@@ -829,7 +904,7 @@ function openYarn(y){
         d.photos=[...keep,...ids];d.photo=d.photos[0]||null;
         if(ed){await S.ycol.doc(y.id).update(d);yPhotos(y).filter(id=>!keep.includes(id)).forEach(id=>S.assets?.delete(id).catch(()=>{}))}
         else await S.ycol.doc('y'+Date.now().toString(36)).set({...d,createdAt:Date.now()});
-        add.forEach(a=>URL.revokeObjectURL(a.url));closeSheet();toast('已儲存');
+        add.forEach(a=>URL.revokeObjectURL(a.url));if(!ed){saved=true;clearTimeout(dT);IDB.del('yarn-new')}closeSheet();toast('已儲存');
       }catch(err){this.disabled=false;toast('儲存失敗,請再試一次')}
     };
     const del=sh.querySelector('#ydel');
@@ -1023,7 +1098,7 @@ function openMaterial(pat){
 /* ---------- events ---------- */
 document.addEventListener('keydown',e=>{if(e.target.id==='wipnew'&&e.key==='Enter'&&!e.isComposing){e.preventDefault();wipAdd()}});
 document.addEventListener('input',e=>{if(e.target.id==='ysearch'){S.yq=e.target.value;const l=$('#ylist');if(l)l.innerHTML=yarnList()}});
-document.addEventListener('change',e=>{if(e.target.id==='file'&&e.target.files.length)pickFiles([...e.target.files]);if(e.target.id==='importf'&&e.target.files[0])doImport(e.target.files[0])});
+document.addEventListener('change',e=>{if(['fbrand','fhook','fsort'].includes(e.target.id)){YV.set({fbrand:'brand',fhook:'hook',fsort:'sort'}[e.target.id],e.target.value||(e.target.id==='fsort'?'new':''));render();return}if(e.target.id==='file'&&e.target.files.length)pickFiles([...e.target.files]);if(e.target.id==='importf'&&e.target.files[0])doImport(e.target.files[0])});
 document.addEventListener('focusout',async e=>{
   if(e.target.id!=='ttl')return;const pat=curPat();if(!pat)return;const v=e.target.value.trim();if(!v||v===pat.title)return;
   try{await S.pcol.doc(pat.id).update({title:v});toast('已改名')}catch(err){toast('改名失敗')}
@@ -1047,6 +1122,7 @@ document.getElementById('app').addEventListener('click',async e=>{
   if(act==='wipopen'){const w=S.projects.find(x=>x.id===a.dataset.id);if(w)openWip(w);return}
   if(act==='yseg'){location.hash=a.dataset.v==='y'?'#/yarn':'#/';return}
   if(act==='yfilter'){S.ytab=a.dataset.v;render();return}
+  if(act==='yview'){YV.set('view',(YV.get('view')||'list')==='card'?'list':'card');render();return}
   if(act==='yadd'){openYarn(null);return}
   if(act==='yopen'){openYarn(S.yarns.find(y=>y.id===a.dataset.id));return}
   if(!pat){return}
