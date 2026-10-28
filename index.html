@@ -276,6 +276,7 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 .ycard .dot.using{background:var(--accent)}.ycard .dot.left{background:#8fa3b5}
 .ycard .cn2{font-size:11px;color:var(--mute);margin:0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
 .ycard .cn{font-size:12.5px;margin:5px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.ver{text-align:center;font-size:12px;color:var(--mute);margin:24px 0 0;opacity:.7}
 .toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 .toast.on{opacity:1}
 </style>
@@ -289,6 +290,7 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 <div class="toast" id="toast"></div>
 <div class="snack" id="snack"><span id="snackT"></span><button id="snackB">記一筆</button></div>
 <script>
+const VER='1.8';
 const SHEEP=`<svg viewBox="0 0 64 56" aria-hidden="true"><g fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.4"><circle cx="18" cy="26" r="10"/><circle cx="30" cy="18" r="11"/><circle cx="44" cy="20" r="10"/><circle cx="50" cy="31" r="9"/><circle cx="24" cy="36" r="11"/><circle cx="40" cy="38" r="11"/></g><rect x="22" y="44" width="4" height="9" rx="2" fill="var(--face)"/><rect x="38" y="45" width="4" height="8" rx="2" fill="var(--face)"/><ellipse cx="14" cy="29" rx="4.5" ry="2.6" fill="var(--face)" transform="rotate(-30 14 29)"/><ellipse cx="34" cy="29" rx="4.5" ry="2.6" fill="var(--face)" transform="rotate(30 34 29)"/><ellipse cx="24" cy="31" rx="8" ry="9" fill="var(--face)"/><circle cx="21" cy="29.5" r="1.3" fill="#fff"/><circle cx="27" cy="29.5" r="1.3" fill="#fff"/><circle cx="19" cy="34" r="1.8" fill="var(--pad)"/><circle cx="29" cy="34" r="1.8" fill="var(--pad)"/><circle cx="20" cy="22" r="4" fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.2"/><circle cx="27" cy="21" r="4" fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.2"/></svg>`;
 const PAW=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><ellipse cx="12" cy="16" rx="5.2" ry="4.4"/><circle cx="5.6" cy="10.5" r="2.3"/><circle cx="9.4" cy="6.3" r="2.3"/><circle cx="14.6" cy="6.3" r="2.3"/><circle cx="18.4" cy="10.5" r="2.3"/></svg>`;
 
@@ -324,7 +326,8 @@ async function flush(pid){
   if(S.dirty[pid]===n)delete S.dirty[pid];
 }
 const tm=(pid,rid)=>{const p=P(pid);return p.timers[rid]||(p.timers[rid]={segs:[]})};
-const elapsed=(t,now=Date.now())=>(t?.segs||[]).reduce((a,s)=>a+((s.e||now)-s.s),0);
+const segSum=(t,now=Date.now())=>(t?.segs||[]).reduce((a,s)=>a+((s.e||now)-s.s),0);
+const elapsed=(t,now=Date.now())=>Math.max(0,segSum(t,now)+(t?.adj||0));
 const running=t=>{const l=t?.segs?.[t.segs.length-1];return !!l&&!l.e};
 function stopAll(pid,except){const p=P(pid);for(const k in p.timers){if(k!==except&&running(p.timers[k]))p.timers[k].segs[p.timers[k].segs.length-1].e=Date.now()}}
 function units(parts){let u=0;for(const p of parts||[]){if(p.e!=null)u++;else{const m=String(p.rep||'').match(/\d+/);u+=units(p.s)*(m?+m[0]:1)}}return u}
@@ -407,7 +410,7 @@ function vSetup(){
   <button class="btn ghost" data-act="export">匯出備份</button>
   <label class="btn ghost" style="text-align:center;cursor:pointer">匯入資料<input type="file" id="importf" accept="application/json,.json" hidden></label>
   <p class="hint" id="imst"></p></div>
-  <div class="card"><h2>這台裝置</h2><p class="hint" style="margin:0">資料存在雲端,換裝置只要輸入一樣的網址和通行碼就好。</p><button class="btn danger" data-act="logout">在這台裝置登出</button></div>`}
+  <div class="card"><h2>這台裝置</h2><p class="hint" style="margin:0">資料存在雲端,換裝置只要輸入一樣的網址和通行碼就好。</p><button class="btn danger" data-act="logout">在這台裝置登出</button></div>`}<p class="ver">織圖本 v${VER}</p>
   </div>`;
 }
 async function doImport(file){
@@ -427,7 +430,7 @@ function vHome(){
     <div class="nm">${esc(p.title||'未命名織圖')}</div><div class="mt">${st.done} / ${n} 段${st.total?'・'+dur(st.total):''}</div><div class="mini"><i style="width:${pct}%"></i></div></a>`}).join('');
   return `<div class="wrap">${homeHead('p')}
   <button class="add" data-act="new">＋ 新增織圖</button>
-  ${S.patterns.length?`<div class="grid">${cards}</div>`:`<div class="empty"><p>還沒有織圖。<br>貼上織圖文字,會自動分段整理。</p></div>`}</div>`;
+  ${S.patterns.length?`<div class="grid">${cards}</div>`:`<div class="empty"><p>還沒有織圖。<br>貼上織圖文字,會自動分段整理。</p></div>`}<p class="ver">織圖本 v${VER}</p></div>`;
 }
 
 /* pattern */
@@ -453,12 +456,36 @@ function stepsHTML(parts,id,p){
   return h+'</ol>';
 }
 function timerHTML(pid,rid,done){
-  const t=P(pid).timers[rid],segs=t?.segs||[],run=running(t),ms=elapsed(t);
-  if(!segs.length)return done?'':`<div class="timer"><span class="tmuted">還沒開始計時</span><span class="tspace"></span><button class="tb" data-act="start">▶ 開始</button></div>`;
+  const t=P(pid).timers[rid],segs=t?.segs||[],run=running(t),ms=elapsed(t),has=segs.length||t?.adj;
+  if(!has)return `<div class="timer"><span class="tmuted">${done?'沒有計時紀錄':'還沒開始計時'}</span><span class="tspace"></span><button class="tx" data-act="tadj">調整</button><button class="tb${done?' ghost':''}" data-act="start">▶ 開始</button></div>`;
   const last=segs[segs.length-1];
-  const range=clock(segs[0].s)+' – '+(run?'進行中':clock(last.e))+(segs.length>1?`・分 ${segs.length} 次`:'');
-  const btn=done?'':run?`<button class="tb ghost" data-act="pause">⏸ 暫停</button>`:`<button class="tb" data-act="start">▶ 繼續</button>`;
-  return `<div class="timer"><span class="tinfo"><b class="${run?'live':''}" ${run?`data-live="${pid}|${rid}"`:''}>${run?live(ms):dur(ms)}</b><span class="tmuted">${range}</span></span>${btn}<button class="tx" data-act="treset">重設</button></div>`;
+  const range=segs.length?clock(segs[0].s)+' – '+(run?'進行中':clock(last.e))+(segs.length>1?`・分 ${segs.length} 次`:'')+(t.adj?'・已調整':''):'手動輸入';
+  const btn=run?`<button class="tb ghost" data-act="pause">⏸ 暫停</button>`:`<button class="tb${done?' ghost':''}" data-act="start">▶ 繼續</button>`;
+  return `<div class="timer"><span class="tinfo"><b class="${run?'live':''}" ${run?`data-live="${pid}|${rid}"`:''}>${run?live(ms):dur(ms)}</b><span class="tmuted">${range}</span></span>${btn}<button class="tx" data-act="tadj">調整</button></div>`;
+}
+function openTimerAdj(pat,r){
+  const p=P(pat.id),t0=p.timers[r.id];const m0=Math.round(elapsed(t0)/60000);
+  const html=`<p class="hint" style="margin-top:0">直接改成實際花的時間;開始、結束的時間點會保留。</p>
+  <div class="fm"><label>總時間</label><div class="two"><div style="display:flex;align-items:center;gap:6px"><input id="th" type="number" inputmode="numeric" min="0" value="${Math.floor(m0/60)}"><span>小時</span></div><div style="display:flex;align-items:center;gap:6px"><input id="tmin" type="number" inputmode="numeric" min="0" max="59" value="${m0%60}"><span>分</span></div></div>
+  <label>快速加時間</label><div class="chips2" style="margin:0">${[15,30,60].map(n=>`<button type="button" data-add="${n}">＋${n>=60?n/60+' 小時':n+' 分'}</button>`).join('')}</div></div>
+  <button class="btn" id="tsave">儲存</button>${t0&&(t0.segs?.length||t0.adj)?'<button class="btn danger" id="tclear">清除計時</button>':''}`;
+  openSheet('調整計時・'+esc(r.label),html,sh=>{
+    const H=sh.querySelector('#th'),M=sh.querySelector('#tmin');
+    const get=()=>Math.max(0,(parseInt(H.value)||0)*60+(parseInt(M.value)||0));
+    const set=m=>{H.value=Math.floor(m/60);M.value=m%60;S.sheetDirty=true};
+    sh.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>set(get()+(+b.dataset.add)));
+    sh.querySelector('#tsave').onclick=()=>{
+      const t=tm(pat.id,r.id);t.adj=get()*60000-segSum(t);if(Math.abs(t.adj)<1000)delete t.adj;
+      if(!t.segs.length&&!t.adj)delete p.timers[r.id];
+      saveP(pat.id);closeSheet();render();toast('已調整 '+r.label+' 的時間');
+    };
+    const c=sh.querySelector('#tclear');
+    if(c)c.onclick=()=>{
+      if(!confirm(`要清除 ${r.label} 的計時嗎?`))return;
+      const bak=clone(p.timers[r.id]);delete p.timers[r.id];saveP(pat.id);closeSheet();render();
+      snack(`已清除 ${r.label} 的計時`,()=>{P(pat.id).timers[r.id]=bak;saveP(pat.id);render();toast('已復原')},'復原');
+    };
+  });
 }
 function rowHTML(pat,r,cur){
   const p=P(pat.id),done=!!p.rows[r.id],open=S.open.has(r.id);
@@ -491,6 +518,7 @@ function vInfo(pat){
   ${pat.materials?.length?`<div class="card"><h2>材料</h2><ul class="list">${pat.materials.map(m=>`<li>${esc(m)}</li>`).join('')}</ul></div>`:''}
   ${pat.special?.length?`<div class="card"><h2>特殊針法</h2>${pat.special.map(s=>`<p style="margin:0 0 4px"><span class="en" style="font-family:ui-monospace,Menlo,monospace">${esc(s.name)}</span>・${esc(s.zh)}</p><div class="sp">${esc(s.desc)}</div>`).join('<hr style="border:0;border-top:1.5px dashed var(--line);margin:12px 0">')}</div>`:''}
   ${pat.notes?.length?`<div class="card"><h2>備註</h2><ul class="list">${pat.notes.map(m=>`<li>${esc(m)}</li>`).join('')}</ul></div>`:''}
+  <button class="btn ghost" data-act="editp">編輯織圖內容</button>
   <button class="btn ghost" data-act="resetp">清除這份的進度</button>
   <button class="btn danger" data-act="delp">刪除這份織圖</button>`;
 }
@@ -543,8 +571,8 @@ $('#fabJump').onclick=()=>{const c=document.querySelector('.row.cur');if(c)c.scr
 const LABEL=/^\s*(Base|Foundation|R(?:ound|nd|d)?\s*\.?\s*\d+(?:\s*[-–~〜]\s*\d+)?|Rows?\s*\d+(?:\s*[-–~〜]\s*\d+)?|第\s*\d+(?:\s*[-–~〜]\s*\d+)?\s*段|\d+(?:\s*[-–~〜]\s*\d+)?\s*段目)(?![A-Za-z])\s*[:：.)\-–]?\s*/i;
 function normLabel(s){s=s.trim();let m=s.match(/^R(?:ound|nd|d)?\s*\.?\s*(\d+(?:\s*[-–~〜]\s*\d+)?)$/i);if(m)return 'R'+m[1].replace(/\s+/g,'').replace(/[–~〜]/,'-');m=s.match(/^Rows?\s*(.+)$/i);if(m)return 'Row '+m[1].replace(/\s+/g,'');return /^(base|foundation)$/i.test(s)?'Base':s.replace(/\s+/g,'')}
 function splitCount(raw){
-  let m=raw.match(/\s*[(\[（]([^()\[\]（）]*\d[^()\[\]（）]*)[)\]）]\s*\.?\s*$/);
-  if(m&&/\b(sts?|stitch(es)?|dcs?|scs?|hdcs?|trs?|ch|sps?|spaces?|dc2tog)\b|目|針|個/i.test(m[1]))return {raw:raw.slice(0,m.index).trim(),count:m[1].trim()};
+  let m=raw.match(/\s*[(\[（]([^()\[\]（）]*\d[^()\[\]（）]*)[)\]）]\s*(?:〔([^〕]*)〕)?\s*\.?\s*$/);
+  if(m&&/\b(sts?|stitch(es)?|dcs?|scs?|hdcs?|trs?|ch|sps?|spaces?|dc2tog)\b|目|針|個/i.test(m[1]))return {raw:raw.slice(0,m.index).trim(),count:m[1].trim(),countZh:(m[2]||'').trim()};
   m=raw.match(/\s*[-–—=]\s*(\d+\s*(?:sts?|stitches|目)[^,;]*)\.?\s*$/i);
   if(m)return {raw:raw.slice(0,m.index).trim(),count:m[1].trim()};
   return {raw,count:''};
@@ -553,13 +581,14 @@ const restoreMk=s=>s.replace(/☆/g,'*').replace(/⁑/g,'**-**').replace(/⁂/g,
 function splitTop(s){
   const out=[];let d=0,cur='';
   for(let i=0;i<s.length;i++){const c=s[i];
-    if('([（'.includes(c))d++;else if(')]）'.includes(c))d=Math.max(0,d-1);
+    if('([（〔'.includes(c))d++;else if(')]）〕'.includes(c))d=Math.max(0,d-1);
     const isSep=d===0&&(',;、，；。'.includes(c)||(c==='.'&&!/\d/.test(s[i-1]||'')&&(i===s.length-1||/\s/.test(s[i+1]))));
     if(isSep){out.push(cur);cur=''}else cur+=c}
   out.push(cur);return out;
 }
-function simple(s){return splitTop(s).map(x=>restoreMk(x).trim().replace(/[.。]$/,'').trim()).filter(x=>x&&!/^[\s,.;:]+$/.test(x)).map(e=>({e,z:''}))}
-const REPRE=/^\s*[,.;、。，]?\s*((?:(?:rep(?:eat)?|work)\b|重複|重覆|繰り返|くり返)[^,;.、。，]*)/i;
+function simple(s){return splitTop(s).map(x=>restoreMk(x).trim().replace(/[.。]$/,'').trim()).filter(x=>x&&!/^[\s,.;:]+$/.test(x)).map(x=>{const m=x.match(/^(.*?)\s*〔([^〕]*)〕\s*$/);return m?{e:m[1].trim(),z:m[2].trim()}:{e:x,z:''}}).filter(q=>q.e)}
+const takeZ=rest=>{const m=rest.match(/^\s*〔([^〕]*)〕/);return m?[m[1].trim(),rest.slice(m[0].length)]:['',rest]};
+const REPRE=/^\s*[,.;、。，]?\s*((?:(?:rep(?:eat)?|work)\b|重複|重覆|繰り返|くり返)[^,;.、。，〔]*)/i;
 function seq(s){
   const out=[];
   while(s.length){
@@ -570,18 +599,18 @@ function seq(s){
       let d=0,j=-1;for(let k=i;k<s.length;k++){if(s[k]==='[')d++;else if(s[k]===']'){d--;if(!d){j=k;break}}}
       if(j<0){out.push(...simple(s.slice(i+1)));break}
       const inner=s.slice(i+1,j);let rest=s.slice(j+1);const rm=rest.match(/^\s*(?:x\s*(\d+)|(\d+)\s*(?:times|x)\b)/i);
-      if(rm){out.push({rep:'repeat '+(rm[1]||rm[2])+' times',repz:'',s:seq(inner)});rest=rest.slice(rm[0].length)}else out.push(...simple('('+inner+')'));
+      if(rm){rest=rest.slice(rm[0].length);const [z,r2]=takeZ(rest);rest=r2;out.push({rep:'repeat '+(rm[1]||rm[2])+' times',repz:z,s:seq(inner)})}else out.push(...simple('('+inner+')'));
       s=rest;continue;
     }
     const j=s.indexOf(ch,i+1);
     if(j<0){
-      const rest=s.slice(i+1);const rm=rest.match(/[,;.、。，]?\s*((?:rep(?:eat)?\b|重複|重覆|繰り返|くり返)[^,;.、。，]*)/i);
-      if(rm){out.push({rep:restoreMk(rm[1].trim()),repz:'',s:seq(rest.slice(0,rm.index))});s=rest.slice(rm.index+rm[0].length);continue}
+      const rest=s.slice(i+1);const rm=rest.match(/[,;.、。，]?\s*((?:rep(?:eat)?\b|重複|重覆|繰り返|くり返)[^,;.、。，〔]*)/i);
+      if(rm){const [z,r2]=takeZ(rest.slice(rm.index+rm[0].length));out.push({rep:restoreMk(rm[1].trim()),repz:z,s:seq(rest.slice(0,rm.index))});s=r2;continue}
       out.push(...simple(rest));break;
     }
-    const inner=s.slice(i+1,j);let rest=s.slice(j+1);const rm=rest.match(REPRE);let label='repeat';
-    if(rm){label=restoreMk(rm[1].trim());rest=rest.slice(rm[0].length)}
-    out.push({rep:label,repz:'',s:seq(inner)});s=rest;
+    const inner=s.slice(i+1,j);let rest=s.slice(j+1);const rm=rest.match(REPRE);let label='repeat',repz='';
+    if(rm){label=restoreMk(rm[1].trim());rest=rest.slice(rm[0].length);[repz,rest]=takeZ(rest)}
+    out.push({rep:label,repz,s:seq(inner)});s=rest;
   }
   return out;
 }
@@ -596,19 +625,52 @@ function parsePattern(text){
     else if(rows.length)rows[rows.length-1].raw+=(rows[rows.length-1].raw?' ':'')+t;
     else pre.push(t);
   }
-  return {notes:pre,rows:rows.map((r,i)=>{const c=splitCount(r.raw);return{id:'r'+i,label:r.label,raw:c.raw,count:c.count,countZh:'',parts:parseSteps(c.raw),note:''}})};
+  return {notes:pre,rows:rows.map((r,i)=>{const c=splitCount(r.raw);return{id:'r'+i,label:r.label,raw:c.raw,count:c.count,countZh:c.countZh||'',parts:parseSteps(c.raw),note:''}})};
+}
+
+const protectE=e=>splitTop(e).length>1?splitTop(e).map(s=>s.trim()).filter(Boolean).join(' ＋ '):e;
+function partsToText(parts,d=1){const mk='*'.repeat(Math.min(d,2));return (parts||[]).map(q=>q.e!=null?protectE(q.e)+(q.z?`〔${q.z}〕`:''):`${mk}${partsToText(q.s,d+1)}${mk} ${q.rep||'repeat'}${q.repz?`〔${q.repz}〕`:''}`).join(', ')}
+const SECRE=/^(.*\S)\s+(Base|R\d[\d-]*|Row \S+|第\s*\d.*段|\d.*段目)$/;
+function patternToText(pat){
+  const L=[...(pat.notes||[])];let sec='';if(L.length)L.push('');
+  pat.rows.forEach(r=>{const m=r.label.match(SECRE);const s=m?m[1]:'',lab=m?m[2]:r.label;
+    if(s!==sec){if(L.length&&L[L.length-1]!=='')L.push('');if(s)L.push(`【${s}】`);sec=s}
+    L.push(`${lab} ${partsToText(r.parts)}${r.count?` (${r.count})${r.countZh?`〔${r.countZh}〕`:''}`:''}`)});
+  return L.join('\n');
+}
+function openEditPattern(pat){
+  const html=`<p class="hint" style="margin-top:0">改完按儲存會重新分段。段落名稱沒變的,完成狀態和計時都會保留;內容有改到的段落,已劃掉的步驟會清除。</p>
+  <textarea class="ta" id="ptext" style="min-height:55vh">${esc(patternToText(pat))}</textarea>
+  <button class="btn" id="psave2">儲存</button><div class="err" id="perr"></div>`;
+  openSheet('編輯織圖內容',html,sh=>{
+    sh.querySelector('#psave2').onclick=async function(){
+      const r=parsePattern(sh.querySelector('#ptext').value);
+      if(!r.rows.length){sh.querySelector('#perr').textContent='找不到段落,每段開頭要有 R1、Row 3、第 4 段 之類的標記。';return}
+      const old={};pat.rows.forEach(x=>{old[x.label]=x});const used=new Set();
+      let next=Math.max(-1,...pat.rows.map(x=>parseInt(String(x.id).replace(/\D/g,''))||0))+1;
+      const p=P(pat.id);let cleared=false;
+      const rows=r.rows.map(x=>{const o=old[x.label];
+        if(o&&!used.has(o.id)){used.add(o.id);const same=JSON.stringify(o.parts)===JSON.stringify(x.parts);
+          if(!same){Object.keys(p.steps).forEach(k=>{if(k.startsWith(o.id+'-')){delete p.steps[k];cleared=true}})}
+          return {...x,id:o.id,note:same?o.note||'':''}}
+        const id='r'+(next++);used.add(id);return {...x,id}});
+      this.disabled=true;
+      try{const {id,...doc}=pat;await S.pcol.doc(pat.id).set({...doc,rows,notes:r.notes});if(cleared)saveP(pat.id);closeSheet();toast(`已更新,共 ${rows.length} 段`)}
+      catch(e){this.disabled=false;toast('儲存失敗,請再試一次')}
+    };
+  });
 }
 
 /* ---------- edit row ---------- */
 function openEdit(pat,r){
   const html=`<p class="hint" style="margin-top:0">修改這一段的文字後會重新分段。沒改到的步驟會保留原本的譯文,這段已劃掉的步驟會清除。</p>
-  <div class="fm"><label>內容</label><textarea class="ta" id="raw">${esc(r.raw)}</textarea><label>針數</label><input id="cnt" value="${esc(r.count||'')}"></div>
+  <div class="fm"><label>內容</label><textarea class="ta" id="raw">${esc(partsToText(r.parts))}</textarea><label>針數</label><input id="cnt" value="${esc(r.count||'')}"><label>針數譯文</label><input id="cntz" value="${esc(r.countZh||'')}"></div>
   <button class="btn" id="go">重新分段</button>`;
   openSheet('修正・'+esc(r.label),html,sh=>{
     sh.querySelector('#go').onclick=async function(){
       const raw=sh.querySelector('#raw').value.trim();if(!raw)return;this.disabled=true;
       const zm={};const walk=(ps,fn)=>(ps||[]).forEach(q=>q.e!=null?fn(q):walk(q.s,fn));walk(r.parts,q=>{if(q.z)zm[q.e.trim()]=q.z});const parts=parseSteps(raw);walk(parts,q=>{if(zm[q.e.trim()])q.z=zm[q.e.trim()]});const count=sh.querySelector('#cnt').value.trim();
-      const rows=pat.rows.map(x=>x.id===r.id?{...x,raw,count,parts,countZh:count===x.count?x.countZh:'',note:''}:x);
+      const rows=pat.rows.map(x=>x.id===r.id?{...x,raw,count,parts,countZh:sh.querySelector('#cntz').value.trim(),note:''}:x);
       try{const {id,...doc}=pat;await S.pcol.doc(pat.id).set({...doc,rows});
         const p=P(pat.id);Object.keys(p.steps).forEach(k=>{if(k.startsWith(r.id+'-'))delete p.steps[k]});saveP(pat.id);closeSheet();toast('已更新 '+r.label)}
       catch(e){this.disabled=false;toast('儲存失敗,請再試一次')}
@@ -622,7 +684,7 @@ function vNew(){
   let h=`<header class="ph"><div class="in"><div class="top" style="padding-bottom:10px"><a class="back" href="#/" aria-label="回織圖本">‹</a><h1>新增織圖</h1></div></div></header><div class="wrap">`;
   if(d.status!=='preview'){
     h+=`<div class="card fm"><label style="margin-top:0">名稱</label><input id="ntl" value="${esc(d.title)}" placeholder="織圖名稱">
-    <label>織圖文字</label><textarea class="ta" id="ntext" style="min-height:220px" placeholder="把織圖文字貼在這裡,每段以 R1、Rnd 2、Row 3、第 4 段 開頭;有好幾個部位時,在前面加一行【頭】【身體】">${esc(d.text)}</textarea>
+    <label>織圖文字</label><textarea class="ta" id="ntext" style="min-height:220px" placeholder="把織圖文字貼在這裡,每段以 R1、Rnd 2、Row 3、第 4 段 開頭;有好幾個部位時,在前面加一行【頭】【身體】;譯文寫在步驟後面的〔〕裡">${esc(d.text)}</textarea>
     <p class="hint" style="margin:6px 2px 0">每段會用逗號拆成步驟,*…* 和 […] N times 會變成重複框;段落最後括號裡的針數會自動抓出來。</p></div>
     <label class="drop" style="padding:18px">${d.pages.length?`<b>重新選擇原圖</b>`:`<b>附上原圖(選填)</b><span style="font-size:13px">PDF 或照片,會放在「原圖」分頁對照用</span>`}<input type="file" id="file" accept="application/pdf,image/jpeg,image/png,image/webp" multiple hidden></label>
     ${d.status==='prep'?'<p class="hint" style="text-align:center">讀取檔案中…</p>':''}
@@ -693,7 +755,7 @@ function vYarnHome(){
   <div class="chips2">${[['all','全部'],['new','未使用'],['using','使用中'],['left','剩餘']].map(([k,l])=>`<button class="${S.ytab===k?'on':''}" data-act="yfilter" data-v="${k}">${l} ${c(k)}</button>`).join('')}</div>
   <div class="ytools">${sel('fbrand',fb,brands.map(b=>[b,b]),'全部品牌')}${sel('fhook',fh,hk.map(h=>[h[0],h[1]]),'全部針號')}${sel('fsort',so==='new'?'':so,[['old','購入 舊→新'],['added','最近新增']],'購入 新→舊')}
   <button class="yview" data-act="yview" aria-label="切換瀏覽模式">${vw==='card'?'☰':'▦'}</button></div>
-  <div id="ylist">${yarnList()}</div>`:`<div class="empty">${BALL.replace('<svg','<svg style="width:90px;height:90px"')}<p>還沒有毛線。<br>貼上購買網址,可以自動帶入資料。</p></div>`}</div>`;
+  <div id="ylist">${yarnList()}</div><p class="ver">織圖本 v${VER}</p>`:`<div class="empty">${BALL.replace('<svg','<svg style="width:90px;height:90px"')}<p>還沒有毛線。<br>貼上購買網址,可以自動帶入資料。</p></div>`}</div>`;
 }
 function yarnList(){
   const q=S.yq.trim().toLowerCase(),fb=YV.get('brand'),fh=YV.get('hook'),so=YV.get('sort')||'new',vw=YV.get('view')||'list';
@@ -995,7 +1057,7 @@ function vDiary(pat,st){
     else{const e=it.e;tl+=`<div class="ent"><div class="eh">${e.label?`<b>${esc(e.label)}</b>`:''}<span>${clock(e.at).split(' ').pop()}</span><button data-act="eedit" data-id="${e.id}">編輯</button></div>${e.text?`<p>${esc(e.text)}</p>`:''}${e.photos?.length?`<div class="gal">${e.photos.map(id=>`<img src="${blobUrl(id)}" alt="" loading="lazy" data-act="photo" data-id="${id}">`).join('')}</div>`:''}</div>`}});
   return sum+yarn+`<button class="btn" data-act="dnote">＋ 記一筆</button><button class="btn ghost" data-act="material">整理素材</button>`+(tl||`<p class="hint" style="text-align:center;margin-top:20px">鉤的時候隨手拍照記一筆,<br>完成的段落也會自動出現在這裡。</p>`);
 }
-function snack(msg,fn){const s=$('#snack');$('#snackT').textContent=msg;$('#snackB').onclick=()=>{s.classList.remove('on');fn()};s.classList.add('on');clearTimeout(snack.t);snack.t=setTimeout(()=>s.classList.remove('on'),5000)}
+function snack(msg,fn,label='記一筆'){const s=$('#snack');$('#snackT').textContent=msg;$('#snackB').textContent=label;$('#snackB').onclick=()=>{s.classList.remove('on');fn()};s.classList.add('on');clearTimeout(snack.t);snack.t=setTimeout(()=>s.classList.remove('on'),5000)}
 function openEntry(pat,{rid,entry}={}){
   const ed=!!entry;const r=pat.rows.find(x=>x.id===(ed?entry.rid:rid));
   let keep=[...(entry?.photos||[])],add=[];let label=ed?entry.label||'':r?.label||'';let erid=ed?entry.rid||'':r?.id||'';
@@ -1133,6 +1195,7 @@ document.getElementById('app').addEventListener('click',async e=>{
   if(act==='eedit'){const en=S.journal.find(x=>x.id===a.dataset.id);if(en)openEntry(pat,{entry:en});return}
   if(act==='photo'){openPhoto(a.dataset.id);return}
   if(act==='cover'){try{await S.pcol.doc(pat.id).update({cover:a.dataset.id});toast('已設為封面')}catch(err){toast('設定失敗')}return}
+  if(act==='editp'){openEditPattern(pat);return}
   if(act==='resetp'){if(confirm('要清除這份織圖的所有進度和計時嗎?')){S.prog[pat.id]={rows:{},steps:{},timers:{},rev:P(pat.id).rev||0};saveP(pat.id);render()}return}
   if(act==='delp'){if(confirm(`確定要刪除「${pat.title}」嗎?這份的日記也會一起刪除,刪除後無法復原。`)){try{for(const en of S.journal.filter(x=>x.pid===pat.id)){await S.jcol.doc(en.id).delete().catch(()=>{});(en.photos||[]).forEach(id=>S.assets?.delete(id).catch(()=>{}))}await S.pcol.doc(pat.id).delete();await S.gcol.doc(pat.id).delete().catch(()=>{});if(S.assets)[...new Set([...(pat.pages||[]),pat.cover].filter(Boolean))].forEach(id=>S.assets.delete(id).catch(()=>{}));location.hash='#/'}catch(err){toast('刪除失敗')}}return}
   const rowEl=e.target.closest('.row');const rid=rowEl?.dataset.rid;const r=rid&&pat.rows.find(x=>x.id===rid);
@@ -1146,7 +1209,7 @@ document.getElementById('app').addEventListener('click',async e=>{
   }
   if(act==='start'){stopAll(pat.id,rid);tm(pat.id,rid).segs.push({s:Date.now()});saveP(pat.id);render();return}
   if(act==='pause'){const t=tm(pat.id,rid);if(running(t))t.segs[t.segs.length-1].e=Date.now();saveP(pat.id);render();return}
-  if(act==='treset'){if(confirm(`要重設 ${r.label} 的計時嗎?`)){delete p.timers[rid];saveP(pat.id);render()}return}
+  if(act==='tadj'){openTimerAdj(pat,r);return}
   if(act==='note'){openEntry(pat,{rid});return}
   if(act==='edit'){openEdit(pat,r);return}
   const li=e.target.closest('li.s');
