@@ -83,7 +83,7 @@ body.noz .z{display:none}
 .row.done:not(.open) .body{display:none}
 .body{padding:0 18px 14px}
 ol{list-style:none;margin:0;padding:0}
-li.s{padding:9px 0;border-top:1.5px dashed var(--line);display:flex;gap:12px;cursor:pointer}
+li.s{padding:9px 0;border-top:1.5px dashed var(--line);display:flex;gap:12px}
 ol>li.s:first-child{border-top:0}
 li.s .k{color:var(--mute);font-size:13px;min-width:22px;padding-top:3px;font-variant-numeric:tabular-nums;display:flex}
 li.s .k svg{width:17px;height:17px;color:var(--accent)}
@@ -277,6 +277,21 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 .ycard .cn2{font-size:11px;color:var(--mute);margin:0 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
 .ycard .cn{font-size:12.5px;margin:5px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
 .ver{text-align:center;font-size:12px;color:var(--mute);margin:24px 0 0;opacity:.7}
+.sec{margin-bottom:14px}
+.sech{display:flex;align-items:center;gap:10px;width:100%;border:0;background:none;padding:10px 6px;color:var(--ink);text-align:left}
+.sech b{font-weight:400;font-size:19px;flex:1}
+.sech span{font-size:13px;color:var(--mute);display:flex;align-items:center;gap:4px}
+.sech span svg{width:14px;height:14px;color:var(--accent)}
+.sech i{font-style:normal;color:var(--mute);transition:transform .2s}
+.sec.col .sech i{transform:rotate(-90deg)}
+.sec.col .secb{display:none}
+.rgb{display:inline-block;background:var(--accent);color:var(--accent-ink);border-radius:999px;padding:1px 8px;font-size:12px;margin-right:6px}
+.ctr{display:flex;align-items:center;gap:10px;background:var(--repbg);border-radius:16px;padding:8px;margin-bottom:8px}
+.ctr button{width:52px;height:52px;border-radius:14px;border:0;background:var(--card);color:var(--ink);font-size:26px;line-height:1;box-shadow:var(--sh);flex:none}
+.ctr button:disabled{opacity:.35}
+.ctr .cv{flex:1;text-align:center;line-height:1.35}
+.ctr .cv b{display:block;font-weight:400;font-size:20px}
+.ctr .cv span{font-size:12.5px;color:var(--mute)}
 .toast{position:fixed;left:50%;bottom:calc(150px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;z-index:20;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
 .toast.on{opacity:1}
 </style>
@@ -290,7 +305,7 @@ body.sh .mask{opacity:1;pointer-events:auto}body.sh .sheet{transform:none}
 <div class="toast" id="toast"></div>
 <div class="snack" id="snack"><span id="snackT"></span><button id="snackB">記一筆</button></div>
 <script>
-const VER='1.8';
+const VER='2.0';
 const SHEEP=`<svg viewBox="0 0 64 56" aria-hidden="true"><g fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.4"><circle cx="18" cy="26" r="10"/><circle cx="30" cy="18" r="11"/><circle cx="44" cy="20" r="10"/><circle cx="50" cy="31" r="9"/><circle cx="24" cy="36" r="11"/><circle cx="40" cy="38" r="11"/></g><rect x="22" y="44" width="4" height="9" rx="2" fill="var(--face)"/><rect x="38" y="45" width="4" height="8" rx="2" fill="var(--face)"/><ellipse cx="14" cy="29" rx="4.5" ry="2.6" fill="var(--face)" transform="rotate(-30 14 29)"/><ellipse cx="34" cy="29" rx="4.5" ry="2.6" fill="var(--face)" transform="rotate(30 34 29)"/><ellipse cx="24" cy="31" rx="8" ry="9" fill="var(--face)"/><circle cx="21" cy="29.5" r="1.3" fill="#fff"/><circle cx="27" cy="29.5" r="1.3" fill="#fff"/><circle cx="19" cy="34" r="1.8" fill="var(--pad)"/><circle cx="29" cy="34" r="1.8" fill="var(--pad)"/><circle cx="20" cy="22" r="4" fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.2"/><circle cx="27" cy="21" r="4" fill="var(--wool)" stroke="var(--woolline)" stroke-width="1.2"/></svg>`;
 const PAW=`<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><ellipse cx="12" cy="16" rx="5.2" ry="4.4"/><circle cx="5.6" cy="10.5" r="2.3"/><circle cx="9.4" cy="6.3" r="2.3"/><circle cx="14.6" cy="6.3" r="2.3"/><circle cx="18.4" cy="10.5" r="2.3"/></svg>`;
 
@@ -434,12 +449,23 @@ function vHome(){
 }
 
 /* pattern */
-function curRow(pat){const p=P(pat.id);return (pat.rows.find(r=>!p.rows[r.id])||{}).id}
+function curRow(pat){const p=P(pat.id),rows=pat.rows;const i=rows.findIndex(r=>r.id===p.last);
+  if(i>=0){const n=rows.slice(i+1).find(r=>!p.rows[r.id]);if(n)return n.id}
+  return (rows.find(r=>!p.rows[r.id])||{}).id}
+const secOf=r=>{const m=r.label.match(SECRE);return m?{s:m[1],lab:m[2]}:{s:'',lab:r.label}};
+const rangeOf=r=>{const m=secOf(r).lab.match(/(\d+)\s*-\s*(\d+)$/);if(!m)return null;const a=+m[1],b=+m[2];return b>a?{a,b,n:b-a+1}:null};
+const colKey=pid=>'kb-col-'+pid;
+const getCol=pid=>{try{return new Set(JSON.parse(localStorage.getItem(colKey(pid))||'[]'))}catch(e){return new Set()}};
+const setCol=(pid,s)=>{try{localStorage.setItem(colKey(pid),JSON.stringify([...s]))}catch(e){}};
 function vPattern(pat){
   const st=stats(pat),n=pat.rows.length;
   const tabs=[['rows','段落'],['pages','原圖'],['log','日記'],['info','資訊']];
   let body='';
-  if(S.tab==='rows'){const cur=curRow(pat);body=pat.rows.map(r=>rowHTML(pat,r,cur)).join('')}
+  if(S.tab==='rows'){const cur=curRow(pat);const p=P(pat.id);
+    const groups=[];pat.rows.forEach(r=>{const s=secOf(r).s;let g=groups[groups.length-1];if(!g||g.s!==s){g={s,rows:[]};groups.push(g)}g.rows.push(r)});
+    if(groups.length===1&&!groups[0].s)body=pat.rows.map(r=>rowHTML(pat,r,cur)).join('');
+    else{const col=getCol(pat.id);body=groups.map(g=>{const d=g.rows.filter(r=>p.rows[r.id]).length,c=col.has(g.s)&&!g.rows.some(r=>r.id===cur&&S.forceOpen===g.s);
+      return `<div class="sec${c?' col':''}"><button class="sech" data-act="sectog" data-sec="${esc(g.s)}"><b>${esc(g.s||'其他')}</b><span>${d===g.rows.length?PAW:''}${d} / ${g.rows.length} 段</span><i>▾</i></button><div class="secb">${g.rows.map(r=>rowHTML(pat,r,cur,true)).join('')}</div></div>`}).join('')}}
   else if(S.tab==='pages')body=vPages(pat);
   else if(S.tab==='log')body=vDiary(pat,st);
   else body=vInfo(pat);
@@ -447,6 +473,10 @@ function vPattern(pat){
   <div class="bar"><i style="width:${n?st.done/n*100:0}%"></i></div>
   <nav class="tabs">${tabs.map(([k,l])=>`<button class="${S.tab===k?'on':''}" data-tab="${k}">${l}</button>`).join('')}</nav></div></header>
   <div class="wrap">${body}</div>`;
+}
+function counterHTML(p,r,rg){
+  const n=Math.min((p.cnt||{})[r.id]||0,rg.n),all=n>=rg.n;
+  return `<div class="ctr"><button data-act="cdec" aria-label="減一圈"${n?'':' disabled'}>−</button><div class="cv">${all?`<b>✓ 完成</b><span>${rg.n} 圈都鉤完了</span>`:`<b>現在鉤 R${rg.a+n}</b><span>已完成 ${n} / ${rg.n} 圈</span>`}</div><button data-act="cinc" aria-label="加一圈"${all?' disabled':''}>＋</button></div>`;
 }
 function stepsHTML(parts,id,p){
   let k=0,h='<ol>';
@@ -487,11 +517,11 @@ function openTimerAdj(pat,r){
     };
   });
 }
-function rowHTML(pat,r,cur){
-  const p=P(pat.id),done=!!p.rows[r.id],open=S.open.has(r.id);
+function rowHTML(pat,r,cur,short){
+  const p=P(pat.id),done=!!p.rows[r.id],open=S.open.has(r.id),rg=rangeOf(r);
   return `<div class="row${done?' done':''}${r.id===cur?' cur':''}${open?' open':''}" id="row-${r.id}" data-rid="${r.id}">
-  <div class="rh" data-act="toggle"><span class="rn">${esc(r.label)}</span><span class="cnt">${esc(r.count||'')}${r.countZh?`<span class="z">${esc(r.countZh)}</span>`:''}</span><button class="ok" data-act="done">${done?PAW+'完成':'完成'}</button></div>
-  <div class="body">${timerHTML(pat.id,r.id,done)}${stepsHTML(r.parts,r.id,p)}${r.note?`<div class="note">${esc(r.note)}</div>`:''}
+  <div class="rh" data-act="toggle"><span class="rn">${esc(short?secOf(r).lab:r.label)}</span><span class="cnt">${rg?`<span class="rgb">共 ${rg.n} 圈</span>`:''}${esc(r.count||'')}${r.countZh?`<span class="z">${esc(r.countZh)}</span>`:''}</span><button class="ok" data-act="done">${done?PAW+'完成':'完成'}</button></div>
+  <div class="body">${timerHTML(pat.id,r.id,done)}${rg?counterHTML(p,r,rg):''}${stepsHTML(r.parts,r.id,null)}${r.note?`<div class="note">${esc(r.note)}</div>`:''}
   <div class="rf"><button data-act="note">記一筆</button><button data-act="edit">修正</button></div></div></div>`;
 }
 function vPages(pat){
@@ -565,7 +595,10 @@ function openRef(){
   openSheet('記號速查',h,sh=>{sh.querySelector('#zt').onclick=function(){showZ=!showZ;this.classList.toggle('on',showZ);document.body.classList.toggle('noz',!showZ);try{localStorage.setItem('knitbook-z',showZ?'1':'0')}catch(e){}}});
 }
 $('#fabRef').onclick=openRef;
-$('#fabJump').onclick=()=>{const c=document.querySelector('.row.cur');if(c)c.scrollIntoView({behavior:'smooth',block:'start'})};
+function jumpCur(pat){pat=pat||curPat();if(!pat)return;const id=curRow(pat);const r=pat.rows.find(x=>x.id===id);if(!r)return;
+  const s=secOf(r).s,col=getCol(pat.id);if(col.has(s)){col.delete(s);setCol(pat.id,col);render()}
+  setTimeout(()=>{const c=document.getElementById('row-'+id);if(c)c.scrollIntoView({behavior:'smooth',block:'start'})},30)}
+$('#fabJump').onclick=()=>jumpCur();
 
 /* ---------- local parser ---------- */
 const LABEL=/^\s*(Base|Foundation|R(?:ound|nd|d)?\s*\.?\s*\d+(?:\s*[-–~〜]\s*\d+)?|Rows?\s*\d+(?:\s*[-–~〜]\s*\d+)?|第\s*\d+(?:\s*[-–~〜]\s*\d+)?\s*段|\d+(?:\s*[-–~〜]\s*\d+)?\s*段目)(?![A-Za-z])\s*[:：.)\-–]?\s*/i;
@@ -588,7 +621,7 @@ function splitTop(s){
 }
 function simple(s){return splitTop(s).map(x=>restoreMk(x).trim().replace(/[.。]$/,'').trim()).filter(x=>x&&!/^[\s,.;:]+$/.test(x)).map(x=>{const m=x.match(/^(.*?)\s*〔([^〕]*)〕\s*$/);return m?{e:m[1].trim(),z:m[2].trim()}:{e:x,z:''}}).filter(q=>q.e)}
 const takeZ=rest=>{const m=rest.match(/^\s*〔([^〕]*)〕/);return m?[m[1].trim(),rest.slice(m[0].length)]:['',rest]};
-const REPRE=/^\s*[,.;、。，]?\s*((?:(?:rep(?:eat)?|work)\b|重複|重覆|繰り返|くり返)[^,;.、。，〔]*)/i;
+const REPRE=/^\s*[,.;、。，]?\s*((?:\d+\s*(?:回|次|번)\s*)?(?:(?:rep(?:eat)?|work)\b|重複|重覆|繰り返|くり返|반복|[x×]\s*\d+)[^,;.、。，〔]*)/i;
 function seq(s){
   const out=[];
   while(s.length){
@@ -604,7 +637,7 @@ function seq(s){
     }
     const j=s.indexOf(ch,i+1);
     if(j<0){
-      const rest=s.slice(i+1);const rm=rest.match(/[,;.、。，]?\s*((?:rep(?:eat)?\b|重複|重覆|繰り返|くり返)[^,;.、。，〔]*)/i);
+      const rest=s.slice(i+1);const rm=rest.match(/[,;.、。，]?\s*((?:\d+\s*(?:回|次|번)\s*)?(?:rep(?:eat)?\b|重複|重覆|繰り返|くり返|반복)[^,;.、。，〔]*)/i);
       if(rm){const [z,r2]=takeZ(rest.slice(rm.index+rm[0].length));out.push({rep:restoreMk(rm[1].trim()),repz:z,s:seq(rest.slice(0,rm.index))});s=r2;continue}
       out.push(...simple(rest));break;
     }
@@ -1177,6 +1210,7 @@ document.getElementById('app').addEventListener('click',async e=>{
   if(act==='logout'){if(confirm('要在這台裝置登出嗎?雲端資料不會刪除。')){localStorage.removeItem('kb-url');localStorage.removeItem('kb-pass');localStorage.removeItem('kb-cache');location.hash='#/';location.reload()}return}
   if(act==='savep'){savePattern();return}
   if(act==='zoom'){a.classList.toggle('zoom');return}
+  if(act==='sectog'&&curPat()){const pid=curPat().id,s=getCol(pid),k=a.dataset.sec;s.has(k)?s.delete(k):s.add(k);setCol(pid,s);a.parentElement.classList.toggle('col');return}
   if(act==='wiptog'){localStorage.setItem('kb-wipcol',localStorage.getItem('kb-wipcol')==='1'?'0':'1');render();return}
   if(act==='wipf'){S.wf=a.dataset.v;render();return}
   if(act==='wipadd'){wipAdd();return}
@@ -1201,19 +1235,20 @@ document.getElementById('app').addEventListener('click',async e=>{
   const rowEl=e.target.closest('.row');const rid=rowEl?.dataset.rid;const r=rid&&pat.rows.find(x=>x.id===rid);
   if(!r){return}
   if(act==='done'){
-    e.stopPropagation();const was=!!p.rows[rid];
-    if(was)delete p.rows[rid];else{p.rows[rid]=Date.now();snack(`${r.label} 完成了`,()=>openEntry(pat,{rid}));const t=p.timers[rid];if(running(t))t.segs[t.segs.length-1].e=Date.now();S.open.delete(rid)}
+    e.stopPropagation();const was=!!p.rows[rid];const rg=rangeOf(r);
+    if(!was&&rg){const n=(p.cnt||{})[rid]||0;if(n<rg.n&&!confirm(`${r.label} 要鉤 ${rg.n} 圈,目前只記錄了 ${n} 圈。確定要標成完成嗎?`))return;(p.cnt=p.cnt||{})[rid]=rg.n}
+    if(was)delete p.rows[rid];else{p.rows[rid]=Date.now();p.last=rid;snack(`${r.label} 完成了`,()=>openEntry(pat,{rid}));const t=p.timers[rid];if(running(t))t.segs[t.segs.length-1].e=Date.now();S.open.delete(rid)}
     saveP(pat.id);render();
-    if(!was){const c=document.querySelector('.row.cur');if(c)c.scrollIntoView({behavior:'smooth',block:'start'})}
+    if(!was)jumpCur(pat);
     return;
   }
   if(act==='start'){stopAll(pat.id,rid);tm(pat.id,rid).segs.push({s:Date.now()});saveP(pat.id);render();return}
   if(act==='pause'){const t=tm(pat.id,rid);if(running(t))t.segs[t.segs.length-1].e=Date.now();saveP(pat.id);render();return}
   if(act==='tadj'){openTimerAdj(pat,r);return}
+  if(act==='cinc'||act==='cdec'){const rg=rangeOf(r);if(!rg)return;p.cnt=p.cnt||{};const n=Math.max(0,Math.min(rg.n,(p.cnt[rid]||0)+(act==='cinc'?1:-1)));p.cnt[rid]=n;p.last=p.last||rid;saveP(pat.id);render();if(act==='cinc'&&n===rg.n)toast(`${rg.n} 圈都鉤完了,可以按完成`);return}
   if(act==='note'){openEntry(pat,{rid});return}
   if(act==='edit'){openEdit(pat,r);return}
   const li=e.target.closest('li.s');
-  if(li){const sid=li.dataset.sid;if(p.steps[sid])delete p.steps[sid];else p.steps[sid]=true;const x=!!p.steps[sid];li.classList.toggle('x',x);li.querySelector('.k').innerHTML=x?PAW:li.dataset.k;saveP(pat.id);return}
   if(act==='toggle'&&p.rows[rid]){S.open.has(rid)?S.open.delete(rid):S.open.add(rid);rowEl.classList.toggle('open');return}
 });
 window.addEventListener('hashchange',()=>{S.tab='rows';S.open=new Set();closeSheet();render();scrollTo(0,0)});
